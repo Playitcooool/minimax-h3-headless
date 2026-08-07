@@ -20,6 +20,9 @@ dev = [
   "respx>=0.22,<1",
 ]
 
+[project.scripts]
+h3-gateway = "minimax_h3_headless.main:run"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
