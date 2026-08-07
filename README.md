@@ -5,29 +5,38 @@ An easy-to-deploy, SSH-first wrapper around the official
 runs without ComfyUI on a Linux GPU server or Slurm cluster and exposes a small
 authenticated API for agent pipelines.
 
-## Four-command workflow
+## Nibi workflow (`def-denilson`)
 
-On your Linux H100 server:
+On a Nibi login node, clone the repository in project storage and prepare the
+environment and model before requesting a GPU:
 
 ```bash
+cd /project/def-denilson/$USER
 git clone https://github.com/Playitcooool/minimax-h3-headless.git
 cd minimax-h3-headless
 
 ./setup.sh
 ./download_models.sh
+```
+
+Request your H100 allocation yourself. Once your shell is running on the
+allocated Nibi compute node, return to the same shared project directory:
+
+```bash
+cd /project/def-denilson/$USER/minimax-h3-headless
 ./run_server.sh
 ./generate.sh
 ```
 
 That is the complete basic workflow:
 
-1. `setup.sh` installs missing Ubuntu packages, uv, the gateway environment,
-   and SGLang.
-2. `download_models.sh` logs in to Hugging Face when needed and downloads the
-   FL2VA checkpoint for prompt-to-video generation.
-3. `run_server.sh` automatically selects the visible GPU, starts SGLang and the
-   authenticated gateway in the background, waits until both are ready, and
-   writes logs under `logs/`.
+1. `setup.sh` loads Nibi modules—without `sudo`—and installs uv, the gateway,
+   SGLang, and their caches under `/project/def-denilson/$USER/minimax-h3`.
+2. `download_models.sh` runs on the login node, logs in to Hugging Face when
+   needed, and puts FL2VA under Alliance project storage rather than `$HOME`.
+3. `run_server.sh` assumes you already have an H100 allocation. It restores the
+   saved Nibi modules, detects the allocated GPU, starts SGLang and the gateway
+   in the background, waits until both are ready, and writes logs under `logs/`.
 4. `generate.sh` asks for a prompt, waits for generation, and saves the MP4
    under `outputs/`.
 
@@ -39,8 +48,11 @@ Stop or inspect the server with:
 ./run_server.sh restart
 ```
 
-Everything below is optional detail for remote access, clusters, alternative
-models, and advanced configuration.
+The server processes live only for the lifetime of your allocation. No script
+in this basic workflow requests, extends, or cancels Alliance GPU resources.
+
+Everything below is optional detail for remote access, alternative models, and
+advanced configuration.
 
 ## What this repo provides
 

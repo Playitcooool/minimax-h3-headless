@@ -4,6 +4,21 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 cd "${repo_dir}"
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+if [[ -n "${H3_MODULES_FILE:-}" && -f "${H3_MODULES_FILE}" ]]; then
+  if ! type module >/dev/null 2>&1 && [[ -r /cvmfs/soft.computecanada.ca/config/profile/bash.sh ]]; then
+    # shellcheck disable=SC1091
+    source /cvmfs/soft.computecanada.ca/config/profile/bash.sh
+  fi
+  # shellcheck disable=SC1090
+  source "${H3_MODULES_FILE}"
+fi
+
 action=${1:-start}
 runtime_dir="${repo_dir}/.run"
 log_dir="${repo_dir}/logs"
@@ -132,24 +147,27 @@ if is_owned_process "${sglang_pid_file}" || is_owned_process "${gateway_pid_file
 fi
 rm -f -- "${sglang_pid_file}" "${gateway_pid_file}"
 
-[[ -x "${repo_dir}/.venv-sglang/bin/sglang" && -x "${repo_dir}/.venv/bin/h3-gateway" ]] || {
+sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv-sglang/bin/sglang"}
+gateway_bin=${H3_GATEWAY_BIN:-"${repo_dir}/.venv/bin/h3-gateway"}
+[[ -x "${sglang_bin}" && -x "${gateway_bin}" ]] || {
   echo "Environment not found. Run ./setup.sh first." >&2
   exit 1
 }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required. Run ./setup.sh." >&2; exit 1; }
+command -v nvidia-smi >/dev/null 2>&1 || {
+  echo "No NVIDIA GPU is visible. Run this inside your Nibi H100 allocation." >&2
+  exit 1
+}
+if ! nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -Eqi 'H100'; then
+  echo "No full H100 is visible. Run this inside your allocated Nibi H100 job." >&2
+  exit 1
+fi
 
 model_path=${H3_MODEL_PATH:-"${repo_dir}/models/MiniMax-H3"}
 [[ -f "${model_path}/model_index.json" && -d "${model_path}/FL2VA" ]] || {
   echo "FL2VA model not found at ${model_path}. Run ./download_models.sh first." >&2
   exit 1
 }
-
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-fi
 
 inference_port=${H3_INFERENCE_PORT:-30010}
 gateway_port=${H3_GATEWAY_PORT:-8080}
@@ -165,6 +183,7 @@ if port_in_use "${gateway_port}"; then
 fi
 
 export H3_MODEL_PATH="${model_path}"
+export H3_SGLANG_BIN="${sglang_bin}"
 export H3_PROFILE=${H3_PROFILE:-auto}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 export H3_INFERENCE_PORT="${inference_port}"
@@ -196,7 +215,7 @@ while ! curl --fail --silent "http://127.0.0.1:${inference_port}/health" >/dev/n
 done
 
 echo "Starting the gateway ..."
-nohup "${repo_dir}/.venv/bin/h3-gateway" >"${log_dir}/gateway.log" 2>&1 &
+nohup "${gateway_bin}" >"${log_dir}/gateway.log" 2>&1 &
 gateway_pid=$!
 if ! write_pid_record "${gateway_pid_file}" "${gateway_pid}"; then
   echo "Gateway exited before its process record could be created." >&2
