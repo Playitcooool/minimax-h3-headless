@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+outputs/
+models/
+work/
+slurm-*.out
+slurm-*.err
+.DS_Store
