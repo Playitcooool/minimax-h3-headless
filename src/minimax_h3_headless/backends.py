@@ -60,8 +60,11 @@ class H3Backend:
                 "POST", f"{base_url}/v1/videos", json=request.model_dump(mode="json")
             )
         else:
+            form = self._vllm_form(request)
             response = await self._request(
-                "POST", f"{base_url}/v1/videos", data=self._vllm_form(request)
+                "POST",
+                f"{base_url}/v1/videos",
+                files={name: (None, value) for name, value in form.items()},
             )
         payload = self._json(response)
         backend_id = payload.get("id")

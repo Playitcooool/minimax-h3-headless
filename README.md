@@ -1,31 +1,122 @@
 # MiniMax H3 Headless
 
-An SSH-first deployment kit for running
-[MiniMax H3](https://github.com/MiniMax-AI/MiniMax-H3) without ComfyUI on a
-Linux GPU server or Slurm cluster.
+An easy-to-deploy, SSH-first wrapper around the official
+[MiniMax H3](https://github.com/MiniMax-AI/MiniMax-H3) open-weight release. It
+runs without ComfyUI on a Linux GPU server or Slurm cluster and exposes a small
+authenticated API for agent pipelines.
 
-The repository is being assembled in verified stages. Its public request model
-tracks H3's official `t2va`, `fl2va`, and `ref2va` modes, 4–15 second duration,
-768-pixel short edge, and asynchronous video job workflow.
+## What this repo provides
 
-Reference counts are validated by the gateway. Reference media format, file
-size, and actual 2–15 second clip duration are validated by the inference
-server, which can inspect the referenced file; they cannot be proven from a URL
-string alone.
+- Official `t2va`, `fl2va`, and `ref2va` request contracts.
+- SGLang launch profiles, including the measured 4×H100 TP2 + Ulysses2 default.
+- vLLM-Omni Docker profiles for its currently documented hardware paths.
+- An authenticated FastAPI gateway that routes FL2VA and Ref2VA separately.
+- A Python client, curl examples, Slurm template, systemd unit, and GitHub CI.
+- A GPU-free mocked test suite for the entire gateway.
 
-## Architecture
+## Important model facts
 
-```text
-Agent / laptop
-    │  SSH tunnel + API key
-    ▼
-H3 gateway (this repo)
-    ├── FL2VA backend: t2va + first/last-frame generation
-    └── Ref2VA backend: image/video/audio reference generation
-             │
-             ▼
-       H.264 + stereo AAC MP4
+MiniMax H3 is not a conventional text LLM. The open H3-Base release jointly
+generates 24 FPS H.264 video and 32 kHz stereo AAC audio at a 768-pixel short
+edge. Duration is 4–15 seconds. FL2VA and Ref2VA are separate checkpoint
+partitions and therefore separate server processes. H3-Context-IR and the 2K
+regeneration stage are hosted services and are not part of the open release.
+
+## Fastest path: SGLang on 4×H100
+
+Prerequisites: Linux, four H100 80 GB GPUs, CUDA/driver compatible with current
+SGLang, `ffmpeg`, `git`, and [uv](https://docs.astral.sh/uv/).
+
+```bash
+git clone YOUR_GITHUB_URL minimax-h3-headless
+cd minimax-h3-headless
+
+scripts/bootstrap_gateway.sh
+scripts/bootstrap_sglang.sh
+
+# Optional but recommended for clusters/shared storage:
+source .venv-sglang/bin/activate
+hf auth login
+export H3_MODEL_DIR=/data/models/MiniMax-H3
+scripts/download_model.sh fl2va
+export H3_MODEL_PATH="$H3_MODEL_DIR"
+
+# Terminal/tmux 1: official 4×H100 speed topology
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export H3_PROFILE=h100x4
+deploy/start_sglang.sh fl2va
+
+# Terminal/tmux 2
+uv run h3-gateway
 ```
 
-The gateway defaults to loopback. Do not expose the raw inference ports or the
-gateway directly to the public internet.
+For Ref2VA, stop FL2VA or use another four GPUs, then run:
+
+```bash
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+deploy/start_sglang.sh ref2va
+```
+
+You can skip the manual model download and leave `H3_MODEL_PATH` unset; SGLang
+will use `MiniMaxAI/MiniMax-H3` and download through the Hugging Face cache.
+
+## Connect from your laptop
+
+Create an SSH tunnel. The remote services stay private:
+
+```bash
+ssh -N -L 8080:127.0.0.1:8080 USER@GPU_SERVER
+```
+
+Copy the generated API key from the server's `.env`, then on the laptop:
+
+```bash
+export H3_GATEWAY_API_KEY='the-server-key'
+curl http://127.0.0.1:8080/healthz
+scripts/submit_t2va.sh
+```
+
+The submit response contains a job ID such as `fl2va:video-...`:
+
+```bash
+curl -H "Authorization: Bearer $H3_GATEWAY_API_KEY" \
+  http://127.0.0.1:8080/v1/generations/JOB_ID
+
+curl -H "Authorization: Bearer $H3_GATEWAY_API_KEY" \
+  http://127.0.0.1:8080/v1/generations/JOB_ID/content \
+  --output result.mp4
+```
+
+For Python/agent integration, see [`examples/agent_client.py`](examples/agent_client.py).
+
+## vLLM-Omni
+
+vLLM H3 support lives in vLLM-Omni, not the ordinary vLLM text-serving path.
+Download both model partitions locally, install NVIDIA Container Toolkit, then:
+
+```bash
+export H3_MODEL_DIR=/data/models/MiniMax-H3
+export H3_PROFILE=b300x4
+deploy/docker/start_vllm_omni.sh FL2VA
+```
+
+Set `H3_BACKEND=vllm_omni` in `.env` before starting the gateway. Current
+vLLM-Omni reference serving accepts a narrower set of Ref2VA combinations than
+the model itself; the gateway returns HTTP 422 for unsupported combinations.
+
+## Slurm and production
+
+- [`docs/SLURM.md`](docs/SLURM.md): site-neutral batch submission and tunnels.
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md): profiles, security, and failures.
+- [`deploy/systemd/h3-gateway.service`](deploy/systemd/h3-gateway.service): a
+  hardened template for a dedicated `/opt/minimax-h3-headless` install.
+
+## Local development
+
+```bash
+uv sync --extra dev --frozen
+uv run pytest -q
+```
+
+This repository's MIT license covers only its own gateway and deployment code.
+MiniMax H3 weights and upstream code remain subject to MiniMax's own license.

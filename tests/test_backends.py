@@ -2,6 +2,8 @@
 
 import json
 from collections.abc import AsyncIterator
+from email import policy
+from email.parser import BytesParser
 
 import httpx
 import pytest
@@ -234,8 +236,31 @@ async def test_vllm_create_submits_form_fields() -> None:
 
     await backend.create(GenerateRequest(prompt="A lake"))
 
-    assert seen[0].headers["content-type"].startswith("application/x-www-form-urlencoded")
-    assert b"prompt=A+lake" in seen[0].content
+    content_type = seen[0].headers["content-type"]
+    assert content_type.startswith("multipart/form-data; boundary=")
+    message = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
+        + seen[0].content
+    )
+    parts = list(message.iter_parts())
+    fields = {
+        part.get_param("name", header="content-disposition"): part.get_payload(
+            decode=True
+        ).decode()
+        for part in parts
+    }
+    assert fields == {
+        "prompt": "A lake",
+        "fps": "24",
+        "num_inference_steps": "50",
+        "flow_shift": "12.0",
+        "seed": "0",
+        "extra_params": '{"task":"t2va","duration":5,"audio_flow_shift":3.0}',
+        "width": "1344",
+        "height": "768",
+    }
+    assert all(part.get_content_disposition() == "form-data" for part in parts)
+    assert all(part.get_filename() is None for part in parts)
     await client.aclose()
 
 

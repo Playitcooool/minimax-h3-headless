@@ -1,4 +1,5 @@
 .venv/
+.venv-sglang/
 __pycache__/
 .pytest_cache/
 *.py[cod]
@@ -8,4 +9,5 @@ models/
 work/
 slurm-*.out
 slurm-*.err
+*.pid
 .DS_Store

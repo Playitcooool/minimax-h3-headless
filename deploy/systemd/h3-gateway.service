@@ -1,0 +1,22 @@
+[Unit]
+Description=MiniMax H3 authenticated gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=h3
+Group=h3
+WorkingDirectory=/opt/minimax-h3-headless
+EnvironmentFile=/etc/minimax-h3/gateway.env
+ExecStart=/opt/minimax-h3-headless/.venv/bin/h3-gateway
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/minimax-h3
+
+[Install]
+WantedBy=multi-user.target
