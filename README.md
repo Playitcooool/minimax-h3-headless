@@ -74,23 +74,28 @@ Create an SSH tunnel. The remote services stay private:
 ssh -N -L 8080:127.0.0.1:8080 USER@GPU_SERVER
 ```
 
-Copy the generated API key from the server's `.env`, then on the laptop:
+Copy the generated API key from the server's `.env`, then on the laptop generate
+a video with one command:
 
 ```bash
 export H3_GATEWAY_API_KEY='the-server-key'
-curl http://127.0.0.1:8080/healthz
-scripts/submit_t2va.sh
+scripts/generate.sh "A panda walking through Shanghai at night" output.mp4
 ```
 
-The submit response contains a job ID such as `fl2va:video-...`:
+Omit both arguments for an interactive prompt and an automatically named file:
 
 ```bash
-curl -H "Authorization: Bearer $H3_GATEWAY_API_KEY" \
-  http://127.0.0.1:8080/v1/generations/JOB_ID
+scripts/generate.sh
+```
 
-curl -H "Authorization: Bearer $H3_GATEWAY_API_KEY" \
-  http://127.0.0.1:8080/v1/generations/JOB_ID/content \
-  --output result.mp4
+The script submits the job, displays status changes, waits for completion, and
+downloads the MP4. Optional environment controls:
+
+```bash
+export H3_DURATION_SECONDS=10       # 4 through 15
+export H3_ASPECT_RATIO=9:16         # 21:9, 16:9, 4:3, 1:1, 3:4, or 9:16
+export H3_SEED=123
+export H3_GENERATION_TIMEOUT_SECONDS=7200
 ```
 
 For Python/agent integration, see [`examples/agent_client.py`](examples/agent_client.py).

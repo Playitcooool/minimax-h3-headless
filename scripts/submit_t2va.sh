@@ -4,6 +4,8 @@ set -euo pipefail
 gateway_url=${H3_GATEWAY_URL:-http://127.0.0.1:8080}
 : "${H3_GATEWAY_API_KEY:?Export H3_GATEWAY_API_KEY first}"
 
+echo "Tip: use scripts/generate.sh to submit, wait, and download automatically." >&2
+
 curl --fail-with-body --silent --show-error \
   --request POST "${gateway_url}/v1/generations" \
   --header "Authorization: Bearer ${H3_GATEWAY_API_KEY}" \
