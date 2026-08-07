@@ -8,7 +8,8 @@ authenticated API for agent pipelines.
 ## What this repo provides
 
 - Official `t2va`, `fl2va`, and `ref2va` request contracts.
-- SGLang launch profiles, including the measured 4×H100 TP2 + Ulysses2 default.
+- Automatic GPU detection, defaulting to a single-H100 offload deployment.
+- SGLang profiles, including the measured 4×H100 TP2 + Ulysses2 fast path.
 - vLLM-Omni Docker profiles for its currently documented hardware paths.
 - An authenticated FastAPI gateway that routes FL2VA and Ref2VA separately.
 - A Python client, curl examples, Slurm template, systemd unit, and GitHub CI.
@@ -22,9 +23,9 @@ edge. Duration is 4–15 seconds. FL2VA and Ref2VA are separate checkpoint
 partitions and therefore separate server processes. H3-Context-IR and the 2K
 regeneration stage are hosted services and are not part of the open release.
 
-## Fastest path: SGLang on 4×H100
+## Default path: one H100 with automatic selection
 
-Prerequisites: Linux, four H100 80 GB GPUs, CUDA/driver compatible with current
+Prerequisites: Linux, one H100 80 GB GPU, at least 256 GB host RAM, CUDA/driver compatible with current
 SGLang, `ffmpeg`, `git`, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -41,24 +42,29 @@ export H3_MODEL_DIR=/data/models/MiniMax-H3
 scripts/download_model.sh fl2va
 export H3_MODEL_PATH="$H3_MODEL_DIR"
 
-# Terminal/tmux 1: official 4×H100 speed topology
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-export H3_PROFILE=h100x4
+# Terminal/tmux 1: detects the visible H100 and selects CPU/layerwise offload
+export CUDA_VISIBLE_DEVICES=0
+export H3_PROFILE=auto
 deploy/start_sglang.sh fl2va
 
 # Terminal/tmux 2
 uv run h3-gateway
 ```
 
-For Ref2VA, stop FL2VA or use another four GPUs, then run:
+For Ref2VA on the same single H100, stop FL2VA first, then run:
 
 ```bash
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 deploy/start_sglang.sh ref2va
 ```
 
 You can skip the manual model download and leave `H3_MODEL_PATH` unset; SGLang
 will use `MiniMaxAI/MiniMax-H3` and download through the Hugging Face cache.
+
+The single-H100 SGLang profile is a conservative project-provided offload
+configuration, not an upstream benchmarked topology. It will be much slower
+than four H100s. If four H100s are visible, `auto` selects the official measured
+TP2 + Ulysses2 profile automatically.
 
 ## Connect from your laptop
 
@@ -96,7 +102,7 @@ Download both model partitions locally, install NVIDIA Container Toolkit, then:
 
 ```bash
 export H3_MODEL_DIR=/data/models/MiniMax-H3
-export H3_PROFILE=b300x4
+export H3_PROFILE=auto
 deploy/docker/start_vllm_omni.sh FL2VA
 ```
 

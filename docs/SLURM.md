@@ -8,20 +8,22 @@ to `sbatch`.
 cd /path/to/minimax-h3-headless
 export H3_REPO_DIR="$PWD"
 export H3_MODEL_PATH=/path/to/models/MiniMax-H3
-export H3_PROFILE=h100x4
+export H3_PROFILE=auto
 
 sbatch \
   --account=YOUR_ACCOUNT \
   --partition=YOUR_GPU_PARTITION \
-  --gpus-per-node=h100:4 \
+  --gpus-per-node=h100:1 \
   --export=ALL \
   deploy/slurm/h3-sglang.sbatch fl2va
 ```
 
-Use your site's equivalent of `--gres=gpu:h100:4` if it does not support
+Use your site's equivalent of `--gres=gpu:h100:1` if it does not support
 `--gpus-per-node`. Keep both model partitions on one node only if the node has
-eight suitable GPUs. On a four-GPU allocation, run FL2VA and Ref2VA as separate
-jobs, or stop one before starting the other.
+enough suitable GPUs. With one H100, run FL2VA and Ref2VA as separate jobs.
+The auto-selected `h100x1` SGLang profile uses layerwise CPU offload, so keep the
+256 GB host-memory request and expect substantially higher latency than the
+official four-H100 resident profile.
 
 Find the compute node and inference port:
 

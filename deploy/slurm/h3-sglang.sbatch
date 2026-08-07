@@ -15,7 +15,7 @@ repo_dir=${H3_REPO_DIR:?Export H3_REPO_DIR before sbatch}
 
 cd "${repo_dir}"
 export H3_INFERENCE_HOST=0.0.0.0
-export H3_PROFILE=${H3_PROFILE:-h100x4}
+export H3_PROFILE=${H3_PROFILE:-auto}
 
 echo "node=$(hostname) variant=${variant} profile=${H3_PROFILE}"
 exec deploy/start_sglang.sh "${variant}"

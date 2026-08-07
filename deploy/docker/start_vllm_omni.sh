@@ -2,7 +2,7 @@
 set -euo pipefail
 
 variant=${1:-FL2VA}
-profile=${H3_PROFILE:-b300x4}
+profile=${H3_PROFILE:-auto}
 model_root=${H3_MODEL_DIR:?Set H3_MODEL_DIR to the absolute MiniMax-H3 download directory}
 host=${H3_INFERENCE_HOST:-127.0.0.1}
 
@@ -14,6 +14,12 @@ esac
 
 model_dir="${model_root}/${variant}"
 [[ -d "${model_dir}" ]] || { echo "Missing model partition: ${model_dir}" >&2; exit 1; }
+
+repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+if [[ "${profile}" == "auto" ]]; then
+  profile=$("${repo_dir}/deploy/detect_profile.sh" vllm_omni)
+  echo "Auto-selected vLLM-Omni profile: ${profile}" >&2
+fi
 
 case "${profile}" in
   b300x4)
@@ -44,7 +50,14 @@ esac
 
 mkdir -p "${model_root}/vllm-storage/${variant}"
 
-exec docker run --rm --gpus "${gpu_count}" \
+docker_gpu_request=${gpu_count}
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "${CUDA_VISIBLE_DEVICES}" != "NoDevFiles" ]]; then
+  # Docker's comma-separated device selector must include literal quotes as
+  # part of the single --gpus argument.
+  docker_gpu_request="\"device=${CUDA_VISIBLE_DEVICES}\""
+fi
+
+exec docker run --rm --gpus "${docker_gpu_request}" \
   --ipc=host \
   -p "${host}:${port}:${port}" \
   -v "${model_dir}:${model_dir}:ro" \

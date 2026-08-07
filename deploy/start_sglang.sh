@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 variant=${1:-fl2va}
-profile=${H3_PROFILE:-h100x4}
+profile=${H3_PROFILE:-auto}
 model_path=${H3_MODEL_PATH:-MiniMaxAI/MiniMax-H3}
 host=${H3_INFERENCE_HOST:-127.0.0.1}
 
@@ -13,7 +13,20 @@ case "${variant}" in
   *) echo "Usage: $0 [fl2va|ref2va]" >&2; exit 2 ;;
 esac
 
+if [[ "${profile}" == "auto" ]]; then
+  profile=$("${repo_dir}/deploy/detect_profile.sh" sglang)
+  echo "Auto-selected SGLang profile: ${profile}" >&2
+fi
+
 case "${profile}" in
+  h100x1|genericx1)
+    topology=(
+      --num-gpus 1 --tp-size 1 --ulysses-degree 1 --performance-mode memory
+      --layerwise-offload-components "dit,text_encoder,vae"
+      --dit-offload-prefetch-size 1 --dit-layerwise-resident-layers 32
+      --enable-torch-compile false
+    )
+    ;;
   h100x4)
     topology=(--num-gpus 4 --tp-size 2 --ulysses-degree 2 --performance-mode speed)
     ;;
@@ -36,7 +49,7 @@ case "${profile}" in
     ;;
   *)
     echo "Unknown H3_PROFILE=${profile}" >&2
-    echo "Choose h100x4, h100x4_memory, h100x4_fsdp, h200x4, or rtx5090x2." >&2
+    echo "Choose auto, h100x1, h100x4, h100x4_memory, h100x4_fsdp, h200x4, rtx5090x2, or genericx1." >&2
     exit 2
     ;;
 esac

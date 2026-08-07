@@ -10,6 +10,8 @@ should call.
 
 | Profile | Officially documented role | Notes |
 | --- | --- | --- |
+| `auto` | Detect visible NVIDIA GPU model/count | Falls back to `h100x1` when detection is unavailable |
+| `h100x1` | Conservative SGLang layerwise-offload path | Project default; not an upstream measured topology; use at least 256 GB host RAM |
 | `h100x4` | SGLang speed default on 4×H100 80 GB | TP2 + Ulysses2; about 66 GB peak/GPU in the published benchmark |
 | `h100x4_memory` | Lower resident memory on 4×H100 | TP4; modestly slower |
 | `h100x4_fsdp` | Capacity fallback on 4×H100 | About 57 GB peak/GPU in the published benchmark |
@@ -17,7 +19,8 @@ should call.
 | `rtx5090x2` | Lossless SGLang offload path | Requires roughly 384 GB host RAM |
 
 The vLLM-Omni Docker launcher includes its documented B300, two-card DLO, and
-single-GPU offload profiles. SGLang is the recommended four-H100 path.
+single-GPU offload profiles. Its `auto` mode selects `single_offload` for one
+H100. SGLang remains the recommended four-H100 performance path.
 
 ## Useful checks
 
