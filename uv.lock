@@ -24,6 +24,9 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')",
 ]
 
+[options]
+prerelease-mode = "allow"
+
 [[package]]
 name = "addict"
 version = "2.4.0"
@@ -552,11 +555,22 @@ wheels = [
 [[package]]
 name = "cuda-tile"
 version = "1.6.0rc5"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://pypi.nvidia.com/" }
 dependencies = [
     { name = "typing-extensions", marker = "sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/d2/177db716b66a1895874aa3ef119645d0bc54fff8cfc6d299b309f366e6b8/cuda_tile-1.6.0rc5.tar.gz", hash = "sha256:611bbd7d3efb81763a3790374d23c8a6f0ecc16735e69e4d3f9ef7762d9335e8", size = 6930, upload-time = "2026-08-06T22:06:44.265Z" }
+wheels = [
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:77d19f6162f1654584f39a14aa9ac0357f62ab66962d0354095356e4e891edcd" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:a14ff257522a017430e98f16aabdfd514bbcf38ecb64a0fba1d3f86cd02a21bb" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:2e2e5ff86992a0f4f481e17c820c1c13543817390900d5041c495eb599580f21" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:b74c20348210d2182cd998a0ecb60c518989a79b28592d72eb8294b38ddb93d7" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:ccb1edfeb82ae366c75846db9cda7ca7d04d95c4107efca813df9f7e0708f6eb" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp313-cp313-manylinux2014_x86_64.whl", hash = "sha256:1f8802f7837d9ffffeff77e5e4abc8b8eb4990ddf77e73008ba13d58003aa08a" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp314-cp314-manylinux2014_aarch64.whl", hash = "sha256:6095ee027141dd0c8124e00796b8cf2fedd28b5e1ee1b20f5b4bdccecc71eef5" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp314-cp314-manylinux2014_x86_64.whl", hash = "sha256:c150d7e08cbea8c6a595393f3f731c64b7d5c1f19095fd42af6a135252dfb348" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp314-cp314t-manylinux2014_aarch64.whl", hash = "sha256:9ea319ae02c0ca0eab488a0d600c859589ddede064a7678090d482a53d53d813" },
+    { url = "https://pypi.nvidia.com/cuda-tile/cuda_tile-1.6.0rc5-cp314-cp314t-manylinux2014_x86_64.whl", hash = "sha256:5424fd6b7c15aadb80fceb38a23b44481af1f3f51d0c2ef920d973ea6d2d411b" },
+]
 
 [[package]]
 name = "cuda-toolkit"
@@ -1637,12 +1651,14 @@ dev = [
     { name = "respx" },
 ]
 inference = [
+    { name = "cuda-tile", marker = "sys_platform == 'linux'" },
     { name = "huggingface-hub" },
     { name = "sglang", extra = ["diffusion"], marker = "sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cuda-tile", marker = "sys_platform == 'linux' and extra == 'inference'", index = "https://pypi.nvidia.com/" },
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "huggingface-hub", marker = "extra == 'inference'", specifier = ">=0.34,<2" },

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 inference = [
+  "cuda-tile; sys_platform == 'linux'",
   "huggingface-hub>=0.34,<2",
   "sglang[diffusion]; sys_platform == 'linux'",
 ]
@@ -37,3 +38,14 @@ packages = ["src/minimax_h3_headless"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.uv]
+prerelease = "allow"
+
+[tool.uv.sources]
+cuda-tile = { index = "nvidia" }
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = true

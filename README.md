@@ -36,7 +36,8 @@ That is the complete basic workflow:
    gateway, SGLang, Hugging Face tools, and prompt client into one environment
    under `/project/def-denilson/$USER/minimax-h3/envs/h3`. The repository's
    `.venv` points to that environment, so activate it with
-   `source .venv/bin/activate`.
+   `source .venv/bin/activate`. The uv project pins `cuda-tile` to NVIDIA's
+   package index because PyPI distributes only its download stub.
 2. `download_models.sh` runs on the login node, logs in to Hugging Face when
    needed, and puts FL2VA under Alliance project storage rather than `$HOME`.
 3. `run_server.sh` assumes you already have an H100 allocation. It restores the

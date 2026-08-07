@@ -8,6 +8,7 @@ import stat
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -805,3 +806,25 @@ def test_easy_workflow_never_manages_slurm_allocations() -> None:
     for script in (SETUP, DOWNLOAD, SERVER, GENERATE):
         content = script.read_text()
         assert not any(command in content for command in forbidden), script
+
+
+def test_cuda_tile_is_locked_to_nvidia_cp311_x86_64_wheel() -> None:
+    project = tomllib.loads((REPO / "pyproject.toml").read_text())
+    inference = project["project"]["optional-dependencies"]["inference"]
+    assert "cuda-tile; sys_platform == 'linux'" in inference
+    assert project["tool"]["uv"]["sources"]["cuda-tile"] == {"index": "nvidia"}
+    assert project["tool"]["uv"]["index"] == [
+        {"name": "nvidia", "url": "https://pypi.nvidia.com", "explicit": True}
+    ]
+
+    lock = tomllib.loads((REPO / "uv.lock").read_text())
+    cuda_tile = next(package for package in lock["package"] if package["name"] == "cuda-tile")
+    assert cuda_tile["source"] == {"registry": "https://pypi.nvidia.com/"}
+    assert "sdist" not in cuda_tile
+    wheel_urls = [wheel["url"] for wheel in cuda_tile["wheels"]]
+    assert any(
+        url.startswith("https://pypi.nvidia.com/cuda-tile/")
+        and "-cp311-cp311-manylinux2014_x86_64.whl" in url
+        for url in wheel_urls
+    )
+    assert not any("files.pythonhosted.org" in url for url in wheel_urls)
