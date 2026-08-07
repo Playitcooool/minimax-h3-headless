@@ -10,4 +10,6 @@ work/
 slurm-*.out
 slurm-*.err
 *.pid
+logs/
+.run/
 .DS_Store

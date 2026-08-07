@@ -5,6 +5,43 @@ An easy-to-deploy, SSH-first wrapper around the official
 runs without ComfyUI on a Linux GPU server or Slurm cluster and exposes a small
 authenticated API for agent pipelines.
 
+## Four-command workflow
+
+On your Linux H100 server:
+
+```bash
+git clone https://github.com/Playitcooool/minimax-h3-headless.git
+cd minimax-h3-headless
+
+./setup.sh
+./download_models.sh
+./run_server.sh
+./generate.sh
+```
+
+That is the complete basic workflow:
+
+1. `setup.sh` installs missing Ubuntu packages, uv, the gateway environment,
+   and SGLang.
+2. `download_models.sh` logs in to Hugging Face when needed and downloads the
+   FL2VA checkpoint for prompt-to-video generation.
+3. `run_server.sh` automatically selects the visible GPU, starts SGLang and the
+   authenticated gateway in the background, waits until both are ready, and
+   writes logs under `logs/`.
+4. `generate.sh` asks for a prompt, waits for generation, and saves the MP4
+   under `outputs/`.
+
+Stop or inspect the server with:
+
+```bash
+./run_server.sh status
+./run_server.sh stop
+./run_server.sh restart
+```
+
+Everything below is optional detail for remote access, clusters, alternative
+models, and advanced configuration.
+
 ## What this repo provides
 
 - Official `t2va`, `fl2va`, and `ref2va` request contracts.
