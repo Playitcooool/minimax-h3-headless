@@ -31,6 +31,10 @@ def _copy_script(source: Path, root: Path) -> Path:
     destination = root / source.name
     root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
+    helper = REPO / "scripts/require_active_env.sh"
+    if helper.exists():
+        (root / "scripts").mkdir(exist_ok=True)
+        shutil.copy2(helper, root / "scripts/require_active_env.sh")
     return destination
 
 
@@ -102,7 +106,7 @@ def test_setup_builds_nibi_project_environments_and_is_idempotent(tmp_path: Path
         "module:load ffmpeg",
     ]
     assert calls[:5] == expected_modules
-    assert calls.count("uv sync --frozen --python " + shutil.which("python3")) == 2
+    assert calls.count("uv sync --frozen --extra inference --python " + shutil.which("python3")) == 2
     data = project_root / "minimax-h3"
     for directory in ("envs", "cache/uv", "cache/xdg", "cache/huggingface", "models/MiniMax-H3"):
         assert (data / directory).is_dir()
@@ -114,9 +118,13 @@ def test_setup_builds_nibi_project_environments_and_is_idempotent(tmp_path: Path
     env_text = (root / ".env").read_text()
     key = next(line.split("=", 1)[1] for line in env_text.splitlines() if line.startswith("H3_GATEWAY_API_KEY="))
     assert key and key != "change-me-to-a-long-random-secret"
-    assert f"H3_GATEWAY_BIN={shlex.quote(str(data / 'envs/gateway/bin/h3-gateway'))}" in env_text
-    assert f"H3_SGLANG_BIN={shlex.quote(str(data / 'envs/sglang/bin/sglang'))}" in env_text
-    assert f"H3_HF_BIN={shlex.quote(str(data / 'envs/sglang/bin/hf'))}" in env_text
+    env_dir = data / "envs/h3"
+    assert (root / ".venv").is_symlink()
+    assert os.path.realpath(root / ".venv") == os.path.realpath(env_dir)
+    assert f"H3_ENV_DIR={shlex.quote(str(env_dir))}" in env_text
+    assert f"H3_GATEWAY_BIN={shlex.quote(str(env_dir / 'bin/h3-gateway'))}" in env_text
+    assert f"H3_SGLANG_BIN={shlex.quote(str(env_dir / 'bin/sglang'))}" in env_text
+    assert f"H3_HF_BIN={shlex.quote(str(env_dir / 'bin/hf'))}" in env_text
 
 
 def test_setup_requires_alliance_module_environment(tmp_path: Path) -> None:
@@ -203,12 +211,41 @@ def test_setup_preserves_existing_secret_and_custom_lines(tmp_path: Path) -> Non
     assert stat.S_IMODE((root / ".env").stat().st_mode) == 0o600
 
 
+@pytest.mark.parametrize("conflict_kind", ["directory", "wrong_link"])
+def test_setup_refuses_conflicting_repo_venv_before_installing(
+    tmp_path: Path, conflict_kind: str
+) -> None:
+    root, script, log, bash_env = _setup_sandbox(tmp_path)
+    if conflict_kind == "directory":
+        (root / ".venv").mkdir()
+    else:
+        (root / ".venv").symlink_to(tmp_path / "some-other-env")
+    env = _setup_env(tmp_path, log, bash_env, tmp_path / "project")
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 1
+    assert "Move" in result.stderr and "aside" in result.stderr
+    assert not any(call.startswith("uv sync") for call in log.read_text().splitlines())
+
+
+def test_setup_accepts_existing_venv_link_through_project_alias(tmp_path: Path) -> None:
+    root, script, log, bash_env = _setup_sandbox(tmp_path)
+    canonical = tmp_path / "canonical-project"
+    canonical.mkdir()
+    alias = tmp_path / "project-alias"
+    alias.symlink_to(canonical, target_is_directory=True)
+    expected = alias / "minimax-h3/envs/h3"
+    (root / ".venv").symlink_to(expected)
+    env = _setup_env(tmp_path, log, bash_env, alias)
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
 def _download_sandbox(tmp_path: Path, auth_exit: int = 0) -> tuple[Path, Path, Path]:
     root = tmp_path / "download repo with spaces"
     script = _copy_script(DOWNLOAD, root)
     log = tmp_path / "download.log"
     _executable(
-        root / ".venv-sglang/bin/hf",
+        root / ".venv/bin/hf",
         "#!/usr/bin/env bash\n"
         "printf 'hf:%s\\n' \"$*\" >> \"$CALL_LOG\"\n"
         f"[[ \"$*\" == 'auth whoami' ]] && exit {auth_exit}\n"
@@ -234,7 +271,7 @@ def test_download_delegates_variant_and_default_model_directory(
     )
     assert result.returncode == 0, result.stderr
     assert f"download:{variant}:model={root / 'models/MiniMax-H3'}:" in log.read_text()
-    assert str(root / ".venv-sglang/bin") in log.read_text()
+    assert str(root / ".venv/bin") in log.read_text()
 
 
 def test_download_logs_in_only_when_needed_and_honors_custom_model_dir(tmp_path: Path) -> None:
@@ -255,8 +292,9 @@ def test_download_restores_modules_and_uses_project_hf_and_model(tmp_path: Path)
     script = _copy_script(DOWNLOAD, root)
     log = tmp_path / "download-project.log"
     project = tmp_path / "project"
+    h3_env = project / "envs/h3"
     hf = _executable(
-        project / "envs/sglang/bin/hf",
+        h3_env / "bin/hf",
         "#!/usr/bin/env bash\nprintf 'project-hf:%s\\n' \"$*\" >> \"$CALL_LOG\"\n",
     )
     model = project / "models/MiniMax-H3"
@@ -268,10 +306,15 @@ def test_download_restores_modules_and_uses_project_hf_and_model(tmp_path: Path)
         "#!/usr/bin/env bash\nprintf 'download:%s:model=%s:path=%s\\n' \"$1\" \"$H3_MODEL_DIR\" \"$PATH\" >> \"$CALL_LOG\"\n",
     )
     (root / ".env").write_text(
-        f"H3_HF_BIN={hf}\nH3_MODEL_DIR={model}\nH3_MODULES_FILE={modules}\n"
+        f"H3_PLATFORM=nibi\nH3_ENV_DIR={h3_env}\nH3_HF_BIN={hf}\n"
+        f"H3_MODEL_DIR={model}\nH3_MODULES_FILE={modules}\n"
     )
     result = subprocess.run(
-        [str(script)], env={**os.environ, "CALL_LOG": str(log)}, text=True, capture_output=True, check=False
+        [str(script)],
+        env={**os.environ, "CALL_LOG": str(log), "VIRTUAL_ENV": str(h3_env)},
+        text=True,
+        capture_output=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     calls = log.read_text()
@@ -292,6 +335,23 @@ def test_download_rejects_bad_variant_and_missing_setup(tmp_path: Path) -> None:
     assert "Run ./setup.sh first" in missing.stderr
 
 
+@pytest.mark.parametrize("active_env", [None, "wrong"])
+def test_nibi_download_requires_the_configured_environment(
+    tmp_path: Path, active_env: str | None
+) -> None:
+    root, script, log = _download_sandbox(tmp_path)
+    expected = tmp_path / "project/envs/h3"
+    (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+    env = {**os.environ, "CALL_LOG": str(log)}
+    env.pop("VIRTUAL_ENV", None)
+    if active_env:
+        env["VIRTUAL_ENV"] = str(tmp_path / active_env)
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 1
+    assert "source .venv/bin/activate" in result.stderr
+    assert not log.exists() or "download:" not in log.read_text()
+
+
 def _server_sandbox(
     tmp_path: Path, *, sglang_exits: bool = False, gateway_exits: bool = False
 ) -> tuple[Path, Path, Path]:
@@ -302,7 +362,7 @@ def _server_sandbox(
     model = root / "models/MiniMax-H3"
     (model / "FL2VA").mkdir(parents=True)
     (model / "model_index.json").write_text("{}")
-    _executable(root / ".venv-sglang/bin/sglang", "#!/usr/bin/env bash\nexit 0\n")
+    _executable(root / ".venv/bin/sglang", "#!/usr/bin/env bash\nexit 0\n")
     gateway_body = "#!/usr/bin/env bash\nexit 19\n" if gateway_exits else (
         "#!/usr/bin/env bash\n"
         "printf 'port=%s fl2va=%s\\n' \"${H3_GATEWAY_PORT:-}\" \"${H3_FL2VA_URL:-}\" > \"$SERVER_STATE/gateway-env\"\n"
@@ -351,7 +411,7 @@ def _server_env(tmp_path: Path, state: Path, **overrides: str) -> dict[str, str]
     env.update(
         PATH=f"{tmp_path / 'server-bin'}{os.pathsep}{env['PATH']}",
         SERVER_STATE=str(state),
-        H3_STARTUP_TIMEOUT_SECONDS="1",
+        H3_STARTUP_TIMEOUT_SECONDS="10",
     )
     env.update(overrides)
     return env
@@ -484,12 +544,65 @@ def test_server_refuses_when_nvidia_smi_is_unavailable(tmp_path: Path) -> None:
     assert "No NVIDIA GPU is visible" in result.stderr
 
 
+@pytest.mark.parametrize("action", ["status", "stop"])
+def test_nibi_server_status_and_stop_do_not_require_activation(tmp_path: Path, action: str) -> None:
+    root, script, state = _server_sandbox(tmp_path)
+    expected = tmp_path / "project/envs/h3"
+    (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+    env = _server_env(tmp_path, state)
+    env.pop("VIRTUAL_ENV", None)
+    result = subprocess.run([str(script), action], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert "Activate" not in result.stderr
+
+
+@pytest.mark.parametrize("active_env", [None, "wrong-env"])
+def test_nibi_server_start_requires_the_configured_environment(
+    tmp_path: Path, active_env: str | None
+) -> None:
+    root, script, state = _server_sandbox(tmp_path)
+    expected = tmp_path / "project/envs/h3"
+    (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+    env = _server_env(tmp_path, state)
+    env.pop("VIRTUAL_ENV", None)
+    if active_env:
+        env["VIRTUAL_ENV"] = str(tmp_path / active_env)
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 1
+    assert "source .venv/bin/activate" in result.stderr
+    assert not (state / "sglang-env").exists()
+
+
+def test_nibi_restart_without_activation_does_not_stop_running_server(tmp_path: Path) -> None:
+    root, script, state = _server_sandbox(tmp_path)
+    env = _server_env(tmp_path, state)
+    try:
+        started = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+        assert started.returncode == 0, started.stderr
+        expected = tmp_path / "project/envs/h3"
+        (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+        env.pop("VIRTUAL_ENV", None)
+        restarted = subprocess.run(
+            [str(script), "restart"], env=env, text=True, capture_output=True, check=False
+        )
+        assert restarted.returncode == 1
+        assert "source .venv/bin/activate" in restarted.stderr
+        status = subprocess.run(
+            [str(script), "status"], env=env, text=True, capture_output=True, check=False
+        )
+        assert "SGLang: running" in status.stdout
+        assert "Gateway: running" in status.stdout
+    finally:
+        subprocess.run([str(script), "stop"], env=env, capture_output=True, check=False)
+
+
 def test_server_restores_modules_and_uses_project_binaries_and_model(tmp_path: Path) -> None:
     root, script, state = _server_sandbox(tmp_path)
     project = tmp_path / "project"
-    sglang = _executable(project / "envs/sglang/bin/sglang", "#!/usr/bin/env bash\nexit 0\n")
+    h3_env = project / "envs/h3"
+    sglang = _executable(h3_env / "bin/sglang", "#!/usr/bin/env bash\nexit 0\n")
     gateway = _executable(
-        project / "envs/gateway/bin/h3-gateway",
+        h3_env / "bin/h3-gateway",
         "#!/usr/bin/env bash\nprintf 'project-gateway\\n' >> \"$SERVER_STATE/command-calls\"\n"
         "printf 'ready\\n' > \"$SERVER_STATE/gateway-env\"\nwhile :; do sleep 1; done\n",
     )
@@ -499,9 +612,15 @@ def test_server_restores_modules_and_uses_project_binaries_and_model(tmp_path: P
     modules = project / "nibi-modules.sh"
     modules.write_text("printf 'modules-restored\\n' >> \"$SERVER_STATE/command-calls\"\n")
     (root / ".env").write_text(
-        f"H3_SGLANG_BIN={sglang}\nH3_GATEWAY_BIN={gateway}\nH3_MODEL_PATH={model}\nH3_MODULES_FILE={modules}\n"
+        f"H3_PLATFORM=nibi\nH3_ENV_DIR={h3_env}\nH3_SGLANG_BIN={sglang}\n"
+        f"H3_GATEWAY_BIN={gateway}\nH3_MODEL_PATH={model}\nH3_MODULES_FILE={modules}\n"
     )
-    env = _server_env(tmp_path, state, H3_STARTUP_TIMEOUT_SECONDS="10")
+    env = _server_env(
+        tmp_path,
+        state,
+        H3_STARTUP_TIMEOUT_SECONDS="10",
+        VIRTUAL_ENV=str(h3_env),
+    )
     try:
         result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
         assert result.returncode == 0, result.stderr
@@ -617,9 +736,66 @@ def test_root_generate_preserves_all_arguments_and_exit_status(tmp_path: Path) -
     assert failed.returncode == 23
 
 
+@pytest.mark.parametrize("active_env", [None, "wrong-env"])
+def test_nibi_generate_requires_the_configured_environment(
+    tmp_path: Path, active_env: str | None
+) -> None:
+    root = tmp_path / "generate-nibi-repo"
+    script = _copy_script(GENERATE, root)
+    expected = tmp_path / "project/envs/h3"
+    (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+    marker = tmp_path / "delegated"
+    _executable(
+        root / "scripts/generate.sh",
+        f"#!/usr/bin/env bash\nprintf called > {shlex.quote(str(marker))}\n",
+    )
+    env = os.environ.copy()
+    env.pop("VIRTUAL_ENV", None)
+    if active_env:
+        env["VIRTUAL_ENV"] = str(tmp_path / active_env)
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 1
+    assert "source .venv/bin/activate" in result.stderr
+    assert not marker.exists()
+
+
+def test_nibi_generate_accepts_the_configured_environment_via_symlink(tmp_path: Path) -> None:
+    root = tmp_path / "generate-nibi-active-repo"
+    script = _copy_script(GENERATE, root)
+    expected = tmp_path / "project/envs/h3"
+    expected.mkdir(parents=True)
+    alias = tmp_path / "active-env-link"
+    alias.symlink_to(expected, target_is_directory=True)
+    (root / ".env").write_text(f"H3_PLATFORM=nibi\nH3_ENV_DIR={expected}\n")
+    _executable(root / "scripts/generate.sh", "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n")
+    result = subprocess.run(
+        [str(script), "prompt", "output.mp4"],
+        env={**os.environ, "VIRTUAL_ENV": str(alias)},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["<prompt>", "<output.mp4>"]
+
+
 @pytest.mark.parametrize("script", [SETUP, DOWNLOAD, SERVER, GENERATE])
 def test_easy_scripts_are_executable_and_valid_bash(script: Path) -> None:
     assert script.stat().st_mode & stat.S_IXUSR
+    result = subprocess.run(["bash", "-n", str(script)], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        REPO / "scripts/require_active_env.sh",
+        REPO / "scripts/bootstrap_gateway.sh",
+        REPO / "scripts/bootstrap_sglang.sh",
+        REPO / "deploy/start_sglang.sh",
+    ],
+)
+def test_unified_environment_helpers_are_valid_bash(script: Path) -> None:
     result = subprocess.run(["bash", "-n", str(script)], text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
 

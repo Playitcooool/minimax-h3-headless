@@ -9,11 +9,6 @@ command -v uv >/dev/null 2>&1 || {
   exit 1
 }
 
-uv venv --python 3.11 .venv-sglang
-UV_LINK_MODE=copy uv pip install \
-  --python .venv-sglang/bin/python \
-  --prerelease=allow \
-  "sglang[diffusion]" \
-  "huggingface_hub[cli]"
+UV_LINK_MODE=copy uv sync --frozen --extra inference --python 3.11
 
-echo "SGLang environment ready at ${repo_dir}/.venv-sglang"
+echo "Unified MiniMax H3 environment ready. Activate it with: source .venv/bin/activate"

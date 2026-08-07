@@ -10,6 +10,9 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+# shellcheck disable=SC1091
+source "${repo_dir}/scripts/require_active_env.sh"
+h3_require_active_env
 if [[ -n "${H3_MODULES_FILE:-}" && -f "${H3_MODULES_FILE}" ]]; then
   if ! type module >/dev/null 2>&1 && [[ -r /cvmfs/soft.computecanada.ca/config/profile/bash.sh ]]; then
     # shellcheck disable=SC1091
@@ -25,7 +28,7 @@ case "${variant}" in
   *) echo "Usage: $0 [fl2va|ref2va|both]" >&2; exit 2 ;;
 esac
 
-hf_bin=${H3_HF_BIN:-"${repo_dir}/.venv-sglang/bin/hf"}
+hf_bin=${H3_HF_BIN:-"${repo_dir}/.venv/bin/hf"}
 [[ -x "${hf_bin}" ]] || {
   echo "Environment not found. Run ./setup.sh first." >&2
   exit 1

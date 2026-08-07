@@ -9,7 +9,7 @@ command -v uv >/dev/null 2>&1 || {
   exit 1
 }
 
-UV_LINK_MODE=copy uv sync --frozen
+UV_LINK_MODE=copy uv sync --frozen --extra inference
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
@@ -25,4 +25,4 @@ PY
   echo "Created .env with a random API key."
 fi
 
-echo "Gateway ready. Start it with: uv run h3-gateway"
+echo "Unified MiniMax H3 environment ready. Activate it with: source .venv/bin/activate"

@@ -16,6 +16,7 @@ git clone https://github.com/Playitcooool/minimax-h3-headless.git
 cd minimax-h3-headless
 
 ./setup.sh
+source .venv/bin/activate
 ./download_models.sh
 ```
 
@@ -24,14 +25,18 @@ allocated Nibi compute node, return to the same shared project directory:
 
 ```bash
 cd /project/def-denilson/$USER/minimax-h3-headless
+source .venv/bin/activate
 ./run_server.sh
 ./generate.sh
 ```
 
 That is the complete basic workflow:
 
-1. `setup.sh` loads Nibi modules—without `sudo`—and installs uv, the gateway,
-   SGLang, and their caches under `/project/def-denilson/$USER/minimax-h3`.
+1. `setup.sh` loads Nibi modules—without `sudo`—and uses uv to install the
+   gateway, SGLang, Hugging Face tools, and prompt client into one environment
+   under `/project/def-denilson/$USER/minimax-h3/envs/h3`. The repository's
+   `.venv` points to that environment, so activate it with
+   `source .venv/bin/activate`.
 2. `download_models.sh` runs on the login node, logs in to Hugging Face when
    needed, and puts FL2VA under Alliance project storage rather than `$HOME`.
 3. `run_server.sh` assumes you already have an H100 allocation. It restores the
@@ -39,6 +44,10 @@ That is the complete basic workflow:
    in the background, waits until both are ready, and writes logs under `logs/`.
 4. `generate.sh` asks for a prompt, waits for generation, and saves the MP4
    under `outputs/`.
+
+On Nibi, `download_models.sh`, server startup, and `generate.sh` check that this
+environment is active. Server status and stop commands remain available without
+activating it.
 
 Stop or inspect the server with:
 
@@ -72,7 +81,7 @@ edge. Duration is 4–15 seconds. FL2VA and Ref2VA are separate checkpoint
 partitions and therefore separate server processes. H3-Context-IR and the 2K
 regeneration stage are hosted services and are not part of the open release.
 
-## Default path: one H100 with automatic selection
+## Alternative manual deployment
 
 Prerequisites: Linux, one H100 80 GB GPU, at least 256 GB host RAM, CUDA/driver compatible with current
 SGLang, `ffmpeg`, `git`, and [uv](https://docs.astral.sh/uv/).
@@ -81,11 +90,10 @@ SGLang, `ffmpeg`, `git`, and [uv](https://docs.astral.sh/uv/).
 git clone YOUR_GITHUB_URL minimax-h3-headless
 cd minimax-h3-headless
 
-scripts/bootstrap_gateway.sh
 scripts/bootstrap_sglang.sh
 
 # Optional but recommended for clusters/shared storage:
-source .venv-sglang/bin/activate
+source .venv/bin/activate
 hf auth login
 export H3_MODEL_DIR=/data/models/MiniMax-H3
 scripts/download_model.sh fl2va

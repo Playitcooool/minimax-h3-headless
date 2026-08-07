@@ -14,6 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+inference = [
+  "huggingface-hub>=0.34,<2",
+  "sglang[diffusion]; sys_platform == 'linux'",
+]
 dev = [
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",

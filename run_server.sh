@@ -131,11 +131,14 @@ show_status() {
   fi
 }
 
+# shellcheck disable=SC1091
+source "${repo_dir}/scripts/require_active_env.sh"
+
 case "${action}" in
   stop) stop_all; exit 0 ;;
-  restart) stop_all ;;
+  restart) h3_require_active_env; stop_all ;;
   status) show_status; exit 0 ;;
-  start) ;;
+  start) h3_require_active_env ;;
   *) echo "Usage: $0 [start|stop|restart|status]" >&2; exit 2 ;;
 esac
 
@@ -147,7 +150,7 @@ if is_owned_process "${sglang_pid_file}" || is_owned_process "${gateway_pid_file
 fi
 rm -f -- "${sglang_pid_file}" "${gateway_pid_file}"
 
-sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv-sglang/bin/sglang"}
+sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv/bin/sglang"}
 gateway_bin=${H3_GATEWAY_BIN:-"${repo_dir}/.venv/bin/h3-gateway"}
 [[ -x "${sglang_bin}" && -x "${gateway_bin}" ]] || {
   echo "Environment not found. Run ./setup.sh first." >&2

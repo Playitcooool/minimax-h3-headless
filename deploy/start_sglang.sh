@@ -54,7 +54,7 @@ case "${profile}" in
     ;;
 esac
 
-sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv-sglang/bin/sglang"}
+sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv/bin/sglang"}
 [[ -x "${sglang_bin}" ]] || {
   echo "SGLang not found at ${sglang_bin}; run scripts/bootstrap_sglang.sh." >&2
   exit 1
