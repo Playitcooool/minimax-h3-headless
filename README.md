@@ -15,9 +15,10 @@ which is enough for prompt-only generation.
 ## Important limitation
 
 The full H3 weights are larger than one H100. This project therefore uses
-SGLang's BF16/FP32 **layerwise CPU offload** mode. It does not quantize the
-model and does not depend on ComfyUI, but it is much slower than a resident
-multi-GPU deployment.
+SGLang's BF16/FP32 **layerwise CPU offload** mode. The default speed profile
+keeps 32 DiT blocks and the VAE resident on the H100, while the remaining model
+weights stream from host RAM. It does not quantize the model and does not
+depend on ComfyUI, but it is still slower than a resident multi-GPU deployment.
 
 MiniMax and SGLang publish measured H100 recipes for four H100 80 GB GPUs; the
 single-H100 offload topology is a practical capacity configuration, not a
@@ -80,16 +81,23 @@ H3_DURATION_SECONDS=10 H3_ASPECT_RATIO=9:16 H3_SEED=123 \
   ./h3.sh generate "A slow vertical tracking shot through a neon night market."
 ```
 
-If startup or generation runs out of memory, reduce the number of resident DiT
-blocks and restart. This trades speed for capacity without changing the model's
-BF16/FP32 weights:
+The default `speed` mode is tuned to use the 80-GB H100 more aggressively. If
+startup or generation runs out of memory, switch to the one-command `memory`
+fallback; it uses 20 resident DiT blocks and offloads the VAE too:
 
 ```bash
-H3_DIT_RESIDENT_LAYERS=4 ./h3.sh restart
+H3_H100_MODE=memory ./h3.sh restart
 ```
 
-The default is `20`. Keep `H3_DIT_RESIDENT_LAYERS` at a non-negative integer;
-increase it only after measuring available GPU and host memory.
+If the request still runs out of memory, lower the resident block count:
+
+```bash
+H3_H100_MODE=memory H3_DIT_RESIDENT_LAYERS=4 ./h3.sh restart
+```
+
+`H3_DIT_RESIDENT_LAYERS` must be a non-negative integer. The speed-mode default
+is `32`; the memory-mode default is `20`. More resident blocks reduce PCIe
+weight transfers, but leave less VRAM for activations.
 
 To put model weights on a larger mounted volume, set the same environment
 variable for setup, download, and server start:
@@ -128,16 +136,19 @@ sglang serve \
   --performance-mode memory \
   --layerwise-offload-components dit,text_encoder,vae \
   --dit-offload-prefetch-size 1 \
-  --dit-layerwise-resident-layers 20 \
+  --dit-layerwise-resident-layers 32 \
+  --component-residency vae=resident \
   --enable-torch-compile false \
   --host 127.0.0.1 \
   --port 30010
 ```
 
-This is the conservative SGLang memory policy: it avoids non-reference
-quantization and leaves the default attention backend unchanged. The direct
-client sends the documented `/v1/videos` payload, polls its status, then
-downloads the completed MP4 atomically.
+SGLang still needs `performance-mode memory` because the complete pipeline is
+larger than 80 GB. Within that policy, retaining more DiT blocks and the VAE
+avoids repeated CPU-to-GPU transfers. The default Hopper attention backend is
+left unchanged, and `torch.compile` stays disabled because its current H3 path
+changes numerical output. The direct client sends the documented `/v1/videos`
+payload, polls its status, then downloads the completed MP4 atomically.
 
 ## Troubleshooting
 
@@ -145,8 +156,9 @@ downloads the completed MP4 atomically.
   rerun `./h3.sh download`.
 - **Server exits during startup:** run `./h3.sh logs`. Most often this means
   insufficient host RAM, GPU memory, free disk, or a CUDA/driver mismatch.
-- **GPU OOM:** restart with `H3_DIT_RESIDENT_LAYERS=4`; do not enable arbitrary
-  quantization as a first response.
+- **GPU OOM:** restart with `H3_H100_MODE=memory`; if needed, add
+  `H3_DIT_RESIDENT_LAYERS=4`. Do not enable arbitrary quantization as a first
+  response.
 - **Slow first request:** expected. The model is loading and CPU-offloaded
   blocks traverse PCIe during denoising.
 - **Need 2K output or official Context-IR quality:** use MiniMax's hosted API;

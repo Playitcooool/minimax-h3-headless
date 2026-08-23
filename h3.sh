@@ -245,7 +245,7 @@ start() {
   export H3_INFERENCE_PORT="${port}"
 
   echo "Starting ${variant} on CUDA device ${CUDA_VISIBLE_DEVICES} ..."
-  echo "Using BF16/FP32 layerwise CPU offload; ComfyUI is not used."
+  echo "Using the single-H100 ${H3_H100_MODE:-speed} profile with BF16/FP32 offload; ComfyUI is not used."
   nohup "${repo_dir}/deploy/start_sglang.sh" "${variant}" >"${log_file}" 2>&1 &
   local pid=$!
   if ! record_pid "${pid}"; then

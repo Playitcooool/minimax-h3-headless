@@ -7,6 +7,16 @@ profile=${H3_PROFILE:-auto}
 model_path=${H3_MODEL_PATH:-MiniMaxAI/MiniMax-H3}
 host=${H3_INFERENCE_HOST:-127.0.0.1}
 
+resident_layer_budget() {
+  local default=$1 value
+  value=${H3_DIT_RESIDENT_LAYERS:-${default}}
+  [[ "${value}" =~ ^[0-9]+$ ]] || {
+    echo "H3_DIT_RESIDENT_LAYERS must be a non-negative integer." >&2
+    exit 2
+  }
+  printf '%s\n' "${value}"
+}
+
 case "${variant}" in
   fl2va) port=${H3_INFERENCE_PORT:-30010} ;;
   ref2va) port=${H3_INFERENCE_PORT:-30011} ;;
@@ -19,12 +29,33 @@ if [[ "${profile}" == "auto" ]]; then
 fi
 
 case "${profile}" in
-  h100x1|genericx1)
-    resident_layers=${H3_DIT_RESIDENT_LAYERS:-20}
-    [[ "${resident_layers}" =~ ^[0-9]+$ ]] || {
-      echo "H3_DIT_RESIDENT_LAYERS must be a non-negative integer." >&2
-      exit 2
-    }
+  h100x1)
+    h100_mode=${H3_H100_MODE:-speed}
+    case "${h100_mode}" in
+      speed)
+        resident_layers=$(resident_layer_budget 32)
+        ;;
+      memory)
+        resident_layers=$(resident_layer_budget 20)
+        ;;
+      *)
+        echo "H3_H100_MODE must be speed or memory." >&2
+        exit 2
+        ;;
+    esac
+    echo "Single-H100 mode: ${h100_mode} (${resident_layers} resident DiT layers)." >&2
+    topology=(
+      --num-gpus 1 --tp-size 1 --ulysses-degree 1 --performance-mode memory
+      --layerwise-offload-components "dit,text_encoder,vae"
+      --dit-offload-prefetch-size 1 --dit-layerwise-resident-layers "${resident_layers}"
+    )
+    if [[ "${h100_mode}" == "speed" ]]; then
+      topology+=(--component-residency "vae=resident")
+    fi
+    topology+=(--enable-torch-compile false)
+    ;;
+  genericx1)
+    resident_layers=$(resident_layer_budget 20)
     topology=(
       --num-gpus 1 --tp-size 1 --ulysses-degree 1 --performance-mode memory
       --layerwise-offload-components "dit,text_encoder,vae"
