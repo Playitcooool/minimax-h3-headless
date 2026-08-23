@@ -1,11 +1,67 @@
-# Slurm deployment
+# Slurm generation and serving
 
-The batch file intentionally omits account, partition, and GPU directives
-because their names differ between clusters. Pass those site-specific resources
-to `sbatch`.
+## One-shot generation job
+
+The recommended batch path starts FL2VA, waits for it to become healthy,
+generates one video, and stops the server automatically. Run setup and download
+the FL2VA weights once on the login node, then submit:
+
+```bash
+./scripts/submit_slurm_generation.sh \
+  "A cinematic tracking shot through a lantern-lit forest, with synchronized rain and footsteps." \
+  outputs/forest.mp4
+```
+
+The helper loads `H3_SLURM_ACCOUNT` from `.env`, requests one H100 by default,
+and prints the Slurm job ID. If `OUTPUT.mp4` is omitted, the result is written to
+`outputs/h3-JOB_ID.mp4`. SGLang's per-job log is `logs/sglang-JOB_ID.log`, while
+Slurm stdout and stderr are `slurm-h3-generate-JOB_ID.out` and
+`slurm-h3-generate-JOB_ID.err`.
+
+Generation settings are ordinary exported variables:
+
+```bash
+H3_DURATION_SECONDS=10 H3_ASPECT_RATIO=9:16 H3_SEED=123 \
+  ./scripts/submit_slurm_generation.sh "A vertical shot through a night market."
+```
+
+For a different site GPU syntax, pass the exact option through the helper:
+
+```bash
+H3_SLURM_GPU_OPTION=--gres=gpu:h100:1 \
+  ./scripts/submit_slurm_generation.sh "A quiet mountain lake at dawn."
+```
+
+You can also call the batch file directly. It intentionally omits account,
+partition, and GPU directives because those names differ between clusters:
 
 ```bash
 cd /path/to/minimax-h3-headless
+export H3_REPO_DIR="$PWD"
+export H3_MODEL_PATH=/path/to/models/MiniMax-H3
+
+sbatch \
+  --account=YOUR_ACCOUNT \
+  --partition=YOUR_GPU_PARTITION \
+  --gpus-per-node=h100:1 \
+  --export=ALL \
+  deploy/slurm/h3-generate.sbatch \
+  "A red panda makes tea in a quiet cabin." \
+  outputs/red-panda.mp4
+```
+
+The one-shot file binds SGLang only to loopback, chooses a per-job port, uses
+the speed-first single-H100 profile, and always stops its child server on normal
+exit, failure, cancellation, or time-limit warning. The job requests 32 CPU
+cores, 256 GB host RAM, and four hours by default; command-line `sbatch` options
+override these headers.
+
+## Long-running server job
+
+For several interactive requests in the same allocation, submit the existing
+server-only job instead:
+
+```bash
 export H3_REPO_DIR="$PWD"
 export H3_MODEL_PATH=/path/to/models/MiniMax-H3
 export H3_PROFILE=auto

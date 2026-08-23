@@ -56,6 +56,29 @@ Before `download`, open the [MiniMax H3 model page](https://huggingface.co/MiniM
 The generated MP4 is written to `outputs/` and the server log to
 `logs/sglang.log`.
 
+## Slurm: submit one complete generation job
+
+On a Slurm login node, the submission helper requests one H100, starts SGLang
+inside the allocation, creates the video, and stops SGLang before the job exits:
+
+```bash
+./scripts/submit_slurm_generation.sh \
+  "A red panda makes tea while rain taps on the cabin window." \
+  outputs/red-panda.mp4
+```
+
+It reads `H3_SLURM_ACCOUNT` from `.env` when present and otherwise uses your
+site's default account. The default GPU request is
+`--gpus-per-node=h100:1`. For clusters that use GRES instead:
+
+```bash
+H3_SLURM_GPU_OPTION=--gres=gpu:h100:1 \
+  ./scripts/submit_slurm_generation.sh "A moonlit mountain lake."
+```
+
+See [the Slurm guide](docs/SLURM.md) for direct `sbatch`, partition, duration,
+seed, logs, and output details.
+
 ## Day-to-day commands
 
 ```bash
