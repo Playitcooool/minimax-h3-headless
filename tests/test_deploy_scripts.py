@@ -214,8 +214,42 @@ def test_start_sglang_defaults_to_auto_h100x1_without_gpu(tmp_path: Path) -> Non
     assert args[:5] == ["serve", "--model-path", "MiniMaxAI/MiniMax-H3", "--model-variant", "fl2va"]
     assert _contains_sequence(args, ["--num-gpus", "1", "--tp-size", "1", "--ulysses-degree", "1"])
     assert _contains_sequence(args, ["--performance-mode", "memory"])
+    assert _contains_sequence(args, ["--dit-layerwise-resident-layers", "20"])
     assert _contains_sequence(args, ["--host", "127.0.0.1", "--port", "30010"])
     assert "Auto-selected SGLang profile: h100x1" in result.stderr
+
+
+def test_start_sglang_single_gpu_allows_an_explicit_resident_layer_budget(tmp_path: Path) -> None:
+    fake_sglang = _executable(
+        tmp_path / "sglang",
+        "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n",
+    )
+    env = os.environ.copy()
+    env.update(
+        H3_SGLANG_BIN=str(fake_sglang),
+        H3_PROFILE="h100x1",
+        H3_DIT_RESIDENT_LAYERS="4",
+    )
+    result = subprocess.run(
+        [str(START_SGLANG)], env=env, text=True, capture_output=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert _contains_sequence(_arg_lines(result.stdout), ["--dit-layerwise-resident-layers", "4"])
+
+
+def test_start_sglang_rejects_invalid_single_gpu_resident_layer_budget(tmp_path: Path) -> None:
+    fake_sglang = _executable(tmp_path / "sglang", "#!/usr/bin/env bash\nexit 99\n")
+    env = os.environ.copy()
+    env.update(
+        H3_SGLANG_BIN=str(fake_sglang),
+        H3_PROFILE="h100x1",
+        H3_DIT_RESIDENT_LAYERS="many",
+    )
+    result = subprocess.run(
+        [str(START_SGLANG)], env=env, text=True, capture_output=True, check=False
+    )
+    assert result.returncode == 2
+    assert "H3_DIT_RESIDENT_LAYERS" in result.stderr
 
 
 def test_start_sglang_auto_expands_four_h100_profile(tmp_path: Path) -> None:

@@ -1,191 +1,159 @@
-# MiniMax H3 Headless
+# MiniMax H3 — single-H100, headless deployment
 
-An easy-to-deploy, SSH-first wrapper around the official
-[MiniMax H3](https://github.com/MiniMax-AI/MiniMax-H3) open-weight release. It
-runs without ComfyUI on a Linux GPU server or Slurm cluster and exposes a small
-authenticated API for agent pipelines.
+This repository now has one recommended path for an SSH-only Linux server:
+**SGLang directly on `127.0.0.1`, with no ComfyUI and no extra gateway.**
 
-## Nibi workflow (`def-denilson`)
+`MiniMax H3` produces a 768p video and synchronized stereo audio in one request.
+The public release splits its weights into two partitions:
 
-On a Nibi login node, clone the repository in project storage and prepare the
-environment and model before requesting a GPU:
+- `FL2VA` — text-to-video-and-audio (`t2va`) and first/last-frame generation.
+- `Ref2VA` — image, audio, and video reference generation.
 
-```bash
-cd /project/def-denilson/$USER
-git clone https://github.com/Playitcooool/minimax-h3-headless.git
-cd minimax-h3-headless
+On a single H100 80 GB, run one partition at a time. The default is `FL2VA`,
+which is enough for prompt-only generation.
 
-./setup.sh
-source .venv/bin/activate
-./download_models.sh
-```
+## Important limitation
 
-Request your H100 allocation yourself. Once your shell is running on the
-allocated Nibi compute node, return to the same shared project directory:
+The full H3 weights are larger than one H100. This project therefore uses
+SGLang's BF16/FP32 **layerwise CPU offload** mode. It does not quantize the
+model and does not depend on ComfyUI, but it is much slower than a resident
+multi-GPU deployment.
 
-```bash
-cd /project/def-denilson/$USER/minimax-h3-headless
-source .venv/bin/activate
-./run_server.sh
-./generate.sh
-```
+MiniMax and SGLang publish measured H100 recipes for four H100 80 GB GPUs; the
+single-H100 offload topology is a practical capacity configuration, not a
+published H100 benchmark. Budget several minutes per first 5-second clip and
+validate the speed on your own server.
 
-That is the complete basic workflow:
+The locally available model is H3-Base at a 768-pixel short edge. The hosted
+H3-Context-IR prompt-preprocessing stage and 2K regeneration are not included
+in the open release.
 
-1. `setup.sh` loads Nibi modules—without `sudo`—and uses uv to install the
-   gateway, SGLang, Hugging Face tools, and prompt client into one environment
-   under `/project/def-denilson/$USER/minimax-h3/envs/h3`. The repository's
-   `.venv` points to that environment, so activate it with
-   `source .venv/bin/activate`. The uv project pins `cuda-tile` to NVIDIA's
-   package index because PyPI distributes only its download stub.
-2. `download_models.sh` runs on the login node, logs in to Hugging Face when
-   needed, and puts FL2VA under Alliance project storage rather than `$HOME`.
-3. `run_server.sh` assumes you already have an H100 allocation. It restores the
-   saved Nibi modules, detects the allocated GPU, starts SGLang and the gateway
-   in the background, waits until both are ready, and writes logs under `logs/`.
-4. `generate.sh` asks for a prompt, waits for generation, and saves the MP4
-   under `outputs/`.
+## Server requirements
 
-On Nibi, `download_models.sh`, server startup, and `generate.sh` check that this
-environment is active. Server status and stop commands remain available without
-activating it.
+- Linux with one NVIDIA H100 80 GB visible to `nvidia-smi`
+- At least 128 GiB host RAM; 256 GiB is recommended for CPU offload
+- At least 180 GiB free disk for one checkpoint partition (more for both)
+- A CUDA driver compatible with the SGLang version locked in this repository
+- `curl`, `git`, `python3`, and `ffmpeg` already available on the server
 
-Stop or inspect the server with:
+No system packages are installed by these scripts. `uv` is installed into your
+user account only when it is missing.
+
+## Four commands
+
+Run these on the H100 server after cloning the repository:
 
 ```bash
-./run_server.sh status
-./run_server.sh stop
-./run_server.sh restart
+./h3.sh setup
+./h3.sh download
+./h3.sh start
+./h3.sh generate "A red panda makes tea in a quiet cabin during gentle rain, cinematic close shot, synchronized kettle and rain sounds."
 ```
 
-The server processes live only for the lifetime of your allocation. No script
-in this basic workflow requests, extends, or cancels Alliance GPU resources.
+Before `download`, open the [MiniMax H3 model page](https://huggingface.co/MiniMaxAI/MiniMax-H3), accept its license, and use a Hugging Face account with access. The command opens the Hugging Face login flow if needed.
 
-Everything below is optional detail for remote access, alternative models, and
-advanced configuration.
+The generated MP4 is written to `outputs/` and the server log to
+`logs/sglang.log`.
 
-## What this repo provides
-
-- Official `t2va`, `fl2va`, and `ref2va` request contracts.
-- Automatic GPU detection, defaulting to a single-H100 offload deployment.
-- SGLang profiles, including the measured 4×H100 TP2 + Ulysses2 fast path.
-- vLLM-Omni Docker profiles for its currently documented hardware paths.
-- An authenticated FastAPI gateway that routes FL2VA and Ref2VA separately.
-- A Python client, curl examples, Slurm template, systemd unit, and GitHub CI.
-- A GPU-free mocked test suite for the entire gateway.
-
-## Important model facts
-
-MiniMax H3 is not a conventional text LLM. The open H3-Base release jointly
-generates 24 FPS H.264 video and 32 kHz stereo AAC audio at a 768-pixel short
-edge. Duration is 4–15 seconds. FL2VA and Ref2VA are separate checkpoint
-partitions and therefore separate server processes. H3-Context-IR and the 2K
-regeneration stage are hosted services and are not part of the open release.
-
-## Alternative manual deployment
-
-Prerequisites: Linux, one H100 80 GB GPU, at least 256 GB host RAM, CUDA/driver compatible with current
-SGLang, `ffmpeg`, `git`, and [uv](https://docs.astral.sh/uv/).
+## Day-to-day commands
 
 ```bash
-git clone YOUR_GITHUB_URL minimax-h3-headless
-cd minimax-h3-headless
-
-scripts/bootstrap_sglang.sh
-
-# Optional but recommended for clusters/shared storage:
-source .venv/bin/activate
-hf auth login
-export H3_MODEL_DIR=/data/models/MiniMax-H3
-scripts/download_model.sh fl2va
-export H3_MODEL_PATH="$H3_MODEL_DIR"
-
-# Terminal/tmux 1: detects the visible H100 and selects CPU/layerwise offload
-export CUDA_VISIBLE_DEVICES=0
-export H3_PROFILE=auto
-deploy/start_sglang.sh fl2va
-
-# Terminal/tmux 2
-uv run h3-gateway
+./h3.sh status
+./h3.sh logs
+./h3.sh stop
+./h3.sh restart
 ```
 
-For Ref2VA on the same single H100, stop FL2VA first, then run:
+The server binds only to `127.0.0.1:30010`, so it is not exposed to the public
+network. To call SGLang's native API from your laptop, use an SSH tunnel:
 
 ```bash
-export CUDA_VISIBLE_DEVICES=0
-deploy/start_sglang.sh ref2va
+ssh -N -L 30010:127.0.0.1:30010 USER@GPU_SERVER
 ```
 
-You can skip the manual model download and leave `H3_MODEL_PATH` unset; SGLang
-will use `MiniMaxAI/MiniMax-H3` and download through the Hugging Face cache.
+## Optional settings
 
-The single-H100 SGLang profile is a conservative project-provided offload
-configuration, not an upstream benchmarked topology. It will be much slower
-than four H100s. If four H100s are visible, `auto` selects the official measured
-TP2 + Ulysses2 profile automatically.
-
-## Connect from your laptop
-
-Create an SSH tunnel. The remote services stay private:
+The defaults create a 5-second, 16:9, 768p clip with 50 inference steps.
 
 ```bash
-ssh -N -L 8080:127.0.0.1:8080 USER@GPU_SERVER
+H3_DURATION_SECONDS=10 H3_ASPECT_RATIO=9:16 H3_SEED=123 \
+  ./h3.sh generate "A slow vertical tracking shot through a neon night market."
 ```
 
-Copy the generated API key from the server's `.env`, then on the laptop generate
-a video with one command:
+If startup or generation runs out of memory, reduce the number of resident DiT
+blocks and restart. This trades speed for capacity without changing the model's
+BF16/FP32 weights:
 
 ```bash
-export H3_GATEWAY_API_KEY='the-server-key'
-scripts/generate.sh "A panda walking through Shanghai at night" output.mp4
+H3_DIT_RESIDENT_LAYERS=4 ./h3.sh restart
 ```
 
-Omit both arguments for an interactive prompt and an automatically named file:
+The default is `20`. Keep `H3_DIT_RESIDENT_LAYERS` at a non-negative integer;
+increase it only after measuring available GPU and host memory.
 
-```bash
-scripts/generate.sh
-```
-
-The script submits the job, displays status changes, waits for completion, and
-downloads the MP4. Optional environment controls:
-
-```bash
-export H3_DURATION_SECONDS=10       # 4 through 15
-export H3_ASPECT_RATIO=9:16         # 21:9, 16:9, 4:3, 1:1, 3:4, or 9:16
-export H3_SEED=123
-export H3_GENERATION_TIMEOUT_SECONDS=7200
-```
-
-For Python/agent integration, see [`examples/agent_client.py`](examples/agent_client.py).
-
-## vLLM-Omni
-
-vLLM H3 support lives in vLLM-Omni, not the ordinary vLLM text-serving path.
-Download both model partitions locally, install NVIDIA Container Toolkit, then:
+To put model weights on a larger mounted volume, set the same environment
+variable for setup, download, and server start:
 
 ```bash
 export H3_MODEL_DIR=/data/models/MiniMax-H3
-export H3_PROFILE=auto
-deploy/docker/start_vllm_omni.sh FL2VA
+./h3.sh setup
+./h3.sh download
+./h3.sh start
 ```
 
-Set `H3_BACKEND=vllm_omni` in `.env` before starting the gateway. Current
-vLLM-Omni reference serving accepts a narrower set of Ref2VA combinations than
-the model itself; the gateway returns HTTP 422 for unsupported combinations.
-
-## Slurm and production
-
-- [`docs/SLURM.md`](docs/SLURM.md): site-neutral batch submission and tunnels.
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md): profiles, security, and failures.
-- [`deploy/systemd/h3-gateway.service`](deploy/systemd/h3-gateway.service): a
-  hardened template for a dedicated `/opt/minimax-h3-headless` install.
-
-## Local development
+To install and switch to the reference partition, stop `FL2VA` first:
 
 ```bash
-uv sync --extra dev --frozen
-uv run pytest -q
+./h3.sh stop
+./h3.sh download ref2va
+./h3.sh start ref2va
 ```
 
-This repository's MIT license covers only its own gateway and deployment code.
-MiniMax H3 weights and upstream code remain subject to MiniMax's own license.
+`./h3.sh generate` intentionally handles the simple text-only `FL2VA` request.
+For first/last-frame or Ref2VA inputs, call the native SGLang endpoint with the
+official request schema. The local server accepts `file://` input URIs only for
+files visible on that same server.
+
+## What the launcher does
+
+`./h3.sh start` launches this direct SGLang configuration:
+
+```bash
+sglang serve \
+  --model-path /path/to/MiniMax-H3 \
+  --model-variant fl2va \
+  --num-gpus 1 \
+  --tp-size 1 \
+  --ulysses-degree 1 \
+  --performance-mode memory \
+  --layerwise-offload-components dit,text_encoder,vae \
+  --dit-offload-prefetch-size 1 \
+  --dit-layerwise-resident-layers 20 \
+  --enable-torch-compile false \
+  --host 127.0.0.1 \
+  --port 30010
+```
+
+This is the conservative SGLang memory policy: it avoids non-reference
+quantization and leaves the default attention backend unchanged. The direct
+client sends the documented `/v1/videos` payload, polls its status, then
+downloads the completed MP4 atomically.
+
+## Troubleshooting
+
+- **Download denied:** accept the MiniMax H3 license in Hugging Face first, then
+  rerun `./h3.sh download`.
+- **Server exits during startup:** run `./h3.sh logs`. Most often this means
+  insufficient host RAM, GPU memory, free disk, or a CUDA/driver mismatch.
+- **GPU OOM:** restart with `H3_DIT_RESIDENT_LAYERS=4`; do not enable arbitrary
+  quantization as a first response.
+- **Slow first request:** expected. The model is loading and CPU-offloaded
+  blocks traverse PCIe during denoising.
+- **Need 2K output or official Context-IR quality:** use MiniMax's hosted API;
+  those stages are not open-sourced.
+
+The older FastAPI gateway, Slurm, and vLLM-Omni files remain in the repository
+for existing users, but they are not part of the recommended single-H100 path.
+
+This repository's MIT license covers only its deployment code. MiniMax H3
+weights remain subject to the [MiniMax H3 Community License](https://huggingface.co/MiniMaxAI/MiniMax-H3).

@@ -1,10 +1,27 @@
 # Operations and troubleshooting
 
-## Process layout
+## Recommended single-H100 process layout
+
+For the SSH-first deployment described in the current README, use `./h3.sh`.
+It starts one SGLang process directly on `127.0.0.1:30010`; there is no
+ComfyUI and no FastAPI gateway in that path. The single H100 process uses
+lossless CPU/layerwise offload, and `./h3.sh generate` talks to SGLang's native
+`/v1/videos` API.
+
+```bash
+./h3.sh status
+./h3.sh logs
+./h3.sh stop
+```
+
+Use `H3_DIT_RESIDENT_LAYERS=4 ./h3.sh restart` as the first capacity fallback
+when the one-H100 process runs out of memory.
+
+## Legacy gateway process layout
 
 FL2VA serves `t2va` and `fl2va` on port 30010. Ref2VA serves `ref2va` on port
 30011. The gateway listens on 127.0.0.1:8080 and is the only endpoint clients
-should call.
+should call when using the legacy gateway workflow.
 
 ## Hardware profiles
 

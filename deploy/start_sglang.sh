@@ -20,10 +20,15 @@ fi
 
 case "${profile}" in
   h100x1|genericx1)
+    resident_layers=${H3_DIT_RESIDENT_LAYERS:-20}
+    [[ "${resident_layers}" =~ ^[0-9]+$ ]] || {
+      echo "H3_DIT_RESIDENT_LAYERS must be a non-negative integer." >&2
+      exit 2
+    }
     topology=(
       --num-gpus 1 --tp-size 1 --ulysses-degree 1 --performance-mode memory
       --layerwise-offload-components "dit,text_encoder,vae"
-      --dit-offload-prefetch-size 1 --dit-layerwise-resident-layers 32
+      --dit-offload-prefetch-size 1 --dit-layerwise-resident-layers "${resident_layers}"
       --enable-torch-compile false
     )
     ;;
