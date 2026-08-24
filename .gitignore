@@ -5,6 +5,7 @@ __pycache__/
 .env
 outputs/
 models/
+minimax-h3/
 work/
 slurm-*.out
 slurm-*.err

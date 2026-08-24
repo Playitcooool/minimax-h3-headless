@@ -166,34 +166,38 @@ def test_setup_installs_uv_and_uses_new_binary_in_same_run(tmp_path: Path) -> No
     assert "uv-install-bin" not in log.read_text()
 
 
-def test_setup_discovers_home_project_alias_and_supports_data_override(tmp_path: Path) -> None:
+def test_setup_defaults_to_repo_storage_and_supports_data_override(tmp_path: Path) -> None:
     root, script, log, bash_env = _setup_sandbox(tmp_path)
-    home = tmp_path / "home"
-    discovered = home / "projects/def-denilson/tester"
-    discovered.mkdir(parents=True)
     custom_data = tmp_path / "large shared data"
     env = _setup_env(tmp_path, log, bash_env, tmp_path / "ignored")
     env.pop("H3_PROJECT_ROOT")
-    env.update(HOME=str(home), H3_DATA_DIR=str(custom_data))
+    env["H3_DATA_DIR"] = str(custom_data)
     result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stderr
     assert (custom_data / "envs").is_dir()
     assert f"H3_DATA_DIR={shlex.quote(str(custom_data))}" in (root / ".env").read_text()
 
 
-def test_setup_rejects_missing_or_invalid_project_storage(tmp_path: Path) -> None:
-    _, script, log, bash_env = _setup_sandbox(tmp_path)
+def test_setup_uses_repo_directory_when_project_root_is_unset(tmp_path: Path) -> None:
+    root, script, log, bash_env = _setup_sandbox(tmp_path)
     env = _setup_env(tmp_path, log, bash_env, tmp_path / "ignored")
     env.pop("H3_PROJECT_ROOT")
-    missing = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
-    assert missing.returncode == 1
-    assert "Cannot find project storage for def-denilson" in missing.stderr
+    result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert f"Nibi environment ready under: {root / 'minimax-h3'}" in result.stdout
+    assert (root / "minimax-h3/envs").is_dir()
+    assert os.path.realpath(root / ".venv") == os.path.realpath(root / "minimax-h3/envs/h3")
+
+
+def test_setup_rejects_invalid_project_root_override(tmp_path: Path) -> None:
+    _, script, log, bash_env = _setup_sandbox(tmp_path)
+    env = _setup_env(tmp_path, log, bash_env, tmp_path / "ignored")
     invalid = tmp_path / "not-a-directory"
     invalid.write_text("x")
     env["H3_PROJECT_ROOT"] = str(invalid)
     result = subprocess.run([str(script)], env=env, text=True, capture_output=True, check=False)
     assert result.returncode == 1
-    assert "Not a directory" in result.stderr
+    assert "H3_PROJECT_ROOT exists but is not a directory" in result.stderr
 
 
 def test_setup_preserves_existing_secret_and_custom_lines(tmp_path: Path) -> None:

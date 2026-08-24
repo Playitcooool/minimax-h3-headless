@@ -33,17 +33,11 @@ for command_name in curl git python3 ffmpeg; do
   }
 done
 
-if [[ -n "${H3_PROJECT_ROOT:-}" ]]; then
-  project_root=${H3_PROJECT_ROOT}
-elif [[ -d "/project/def-denilson/${USER}" ]]; then
-  project_root="/project/def-denilson/${USER}"
-elif [[ -d "${HOME}/projects/def-denilson/${USER}" ]]; then
-  project_root="${HOME}/projects/def-denilson/${USER}"
-else
-  echo "Cannot find project storage for def-denilson." >&2
-  echo "Set H3_PROJECT_ROOT to your writable Alliance project directory." >&2
+project_root=${H3_PROJECT_ROOT:-"${repo_dir}"}
+[[ ! -e "${project_root}" || -d "${project_root}" ]] || {
+  echo "H3_PROJECT_ROOT exists but is not a directory: ${project_root}" >&2
   exit 1
-fi
+}
 
 data_dir=${H3_DATA_DIR:-"${project_root}/minimax-h3"}
 env_dir="${data_dir}/envs/h3"
@@ -91,7 +85,7 @@ elif [[ -e "${venv_link}" ]]; then
   exit 1
 fi
 
-echo "Creating one uv environment for MiniMax H3 in project storage ..."
+echo "Creating one uv environment for MiniMax H3 under: ${data_dir}"
 UV_PROJECT_ENVIRONMENT="${env_dir}" UV_LINK_MODE=copy \
   uv sync --frozen --extra inference --python "$(command -v python3)"
 

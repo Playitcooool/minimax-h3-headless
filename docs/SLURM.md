@@ -4,7 +4,18 @@
 
 The recommended batch path starts FL2VA, waits for it to become healthy,
 generates one video, and stops the server automatically. Run setup and download
-the FL2VA weights once on the login node, then submit:
+the FL2VA weights once on the login node, then submit. By default, `setup.sh`
+stores the environment, model, and caches in `./minimax-h3/` beside the
+repository; set `H3_PROJECT_ROOT` only when you want a different storage root.
+
+```bash
+cd /scratch/USER/minimax-h3-headless
+./setup.sh
+source .venv/bin/activate
+./download_models.sh fl2va
+```
+
+Then submit:
 
 ```bash
 ./scripts/submit_slurm_generation.sh \
