@@ -217,7 +217,7 @@ def test_start_sglang_defaults_to_auto_h100x1_without_gpu(tmp_path: Path) -> Non
     assert _contains_sequence(args, ["--num-gpus", "1", "--tp-size", "1", "--ulysses-degree", "1"])
     assert _contains_sequence(args, ["--performance-mode", "memory"])
     assert _contains_sequence(args, ["--dit-layerwise-resident-layers", "32"])
-    assert _contains_sequence(args, ["--component-residency", "vae=resident"])
+    assert "--component-residency" not in args
     assert _contains_sequence(args, ["--enable-torch-compile", "false"])
     assert _contains_sequence(args, ["--host", "127.0.0.1", "--port", "30010"])
     assert "Auto-selected SGLang profile: h100x1" in result.stderr

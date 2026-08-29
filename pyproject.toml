@@ -17,7 +17,7 @@ dependencies = [
 inference = [
   "cuda-tile; sys_platform == 'linux'",
   "huggingface-hub>=0.34,<2",
-  "sglang[diffusion]; sys_platform == 'linux'",
+  "sglang[diffusion]>=0.5.17,<0.5.18; sys_platform == 'linux'",
 ]
 dev = [
   "pytest>=8.4,<9",

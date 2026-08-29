@@ -5,8 +5,8 @@
 For the SSH-first deployment described in the current README, use `./h3.sh`.
 It starts one SGLang process directly on `127.0.0.1:30010`; there is no
 ComfyUI and no FastAPI gateway in that path. The single H100 process uses
-lossless CPU/layerwise offload, keeps 32 DiT blocks plus the VAE resident by
-default, and `./h3.sh generate` talks to SGLang's native `/v1/videos` API.
+lossless CPU/layerwise offload, keeps 32 DiT blocks resident by default, and
+`./h3.sh generate` talks to SGLang's native `/v1/videos` API.
 
 ```bash
 ./h3.sh status
@@ -15,9 +15,8 @@ default, and `./h3.sh generate` talks to SGLang's native `/v1/videos` API.
 ```
 
 Use `H3_H100_MODE=memory ./h3.sh restart` as the first capacity fallback when
-the one-H100 process runs out of memory. This returns to 20 resident DiT blocks
-and offloads the VAE. Add `H3_DIT_RESIDENT_LAYERS=4` only if more headroom is
-needed.
+the one-H100 process runs out of memory. This returns to 20 resident DiT blocks.
+Add `H3_DIT_RESIDENT_LAYERS=4` only if more headroom is needed.
 
 ## Legacy gateway process layout
 
@@ -30,7 +29,7 @@ should call when using the legacy gateway workflow.
 | Profile | Officially documented role | Notes |
 | --- | --- | --- |
 | `auto` | Detect visible NVIDIA GPU model/count | Falls back to `h100x1` when detection is unavailable |
-| `h100x1` | Speed-first SGLang layerwise-offload path | 32 resident DiT blocks plus resident VAE; project default, not an upstream measured topology; use at least 256 GB host RAM |
+| `h100x1` | Speed-first SGLang layerwise-offload path | 32 resident DiT blocks; project default, not an upstream measured topology; use at least 256 GB host RAM |
 | `h100x4` | SGLang speed default on 4×H100 80 GB | TP2 + Ulysses2; about 66 GB peak/GPU in the published benchmark |
 | `h100x4_memory` | Lower resident memory on 4×H100 | TP4; modestly slower |
 | `h100x4_fsdp` | Capacity fallback on 4×H100 | About 57 GB peak/GPU in the published benchmark |

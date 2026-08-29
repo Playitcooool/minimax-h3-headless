@@ -16,8 +16,8 @@ which is enough for prompt-only generation.
 
 The full H3 weights are larger than one H100. This project therefore uses
 SGLang's BF16/FP32 **layerwise CPU offload** mode. The default speed profile
-keeps 32 DiT blocks and the VAE resident on the H100, while the remaining model
-weights stream from host RAM. It does not quantize the model and does not
+keeps 32 DiT blocks resident on the H100 while the remaining model weights,
+including the VAE, stream from host RAM. It does not quantize the model and does not
 depend on ComfyUI, but it is still slower than a resident multi-GPU deployment.
 
 MiniMax and SGLang publish measured H100 recipes for four H100 80 GB GPUs; the
@@ -35,6 +35,8 @@ in the open release.
 - At least 128 GiB host RAM; 256 GiB is recommended for CPU offload
 - At least 180 GiB free disk for one checkpoint partition (more for both)
 - A CUDA driver compatible with the SGLang version locked in this repository
+- SGLang 0.5.17, which `./h3.sh setup` installs; this is the first locked
+  release that accepts the MiniMax-H3 `--model-variant` and DiT-residency flags
 - `curl`, `git`, `python3`, and `ffmpeg` already available on the server
 
 No system packages are installed by these scripts. `uv` is installed into your
@@ -106,7 +108,7 @@ H3_DURATION_SECONDS=10 H3_ASPECT_RATIO=9:16 H3_SEED=123 \
 
 The default `speed` mode is tuned to use the 80-GB H100 more aggressively. If
 startup or generation runs out of memory, switch to the one-command `memory`
-fallback; it uses 20 resident DiT blocks and offloads the VAE too:
+fallback; it uses 20 resident DiT blocks:
 
 ```bash
 H3_H100_MODE=memory ./h3.sh restart
@@ -160,15 +162,14 @@ sglang serve \
   --layerwise-offload-components dit,text_encoder,vae \
   --dit-offload-prefetch-size 1 \
   --dit-layerwise-resident-layers 32 \
-  --component-residency vae=resident \
   --enable-torch-compile false \
   --host 127.0.0.1 \
   --port 30010
 ```
 
 SGLang still needs `performance-mode memory` because the complete pipeline is
-larger than 80 GB. Within that policy, retaining more DiT blocks and the VAE
-avoids repeated CPU-to-GPU transfers. The default Hopper attention backend is
+larger than 80 GB. Within that policy, retaining more DiT blocks avoids repeated
+CPU-to-GPU transfers. The default Hopper attention backend is
 left unchanged, and `torch.compile` stays disabled because its current H3 path
 changes numerical output. The direct client sends the documented `/v1/videos`
 payload, polls its status, then downloads the completed MP4 atomically.

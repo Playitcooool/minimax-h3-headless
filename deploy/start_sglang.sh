@@ -49,9 +49,6 @@ case "${profile}" in
       --layerwise-offload-components "dit,text_encoder,vae"
       --dit-offload-prefetch-size 1 --dit-layerwise-resident-layers "${resident_layers}"
     )
-    if [[ "${h100_mode}" == "speed" ]]; then
-      topology+=(--component-residency "vae=resident")
-    fi
     topology+=(--enable-torch-compile false)
     ;;
   genericx1)
