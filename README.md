@@ -35,6 +35,7 @@ in the open release.
 - At least 128 GiB host RAM; 256 GiB is recommended for CPU offload
 - At least 180 GiB free disk for one checkpoint partition (more for both)
 - A CUDA driver compatible with the SGLang version locked in this repository
+- CUDA Toolkit compiler (`nvcc`), used once to build SGLang's H3 JIT kernels
 - SGLang 0.5.17, which `./h3.sh setup` installs; this is the first locked
   release that accepts the MiniMax-H3 `--model-variant` and DiT-residency flags
 - `curl`, `git`, `python3`, and `ffmpeg` already available on the server
@@ -180,6 +181,9 @@ payload, polls its status, then downloads the completed MP4 atomically.
   rerun `./h3.sh download`.
 - **Server exits during startup:** run `./h3.sh logs`. Most often this means
   insufficient host RAM, GPU memory, free disk, or a CUDA/driver mismatch.
+- **`Could not detect ROCm GPU architecture`:** update this repository and
+  restart. The launcher explicitly selects CUDA for SGLang's JIT kernels on an
+  NVIDIA node; make sure the CUDA module supplies `nvcc`.
 - **GPU OOM:** restart with `H3_H100_MODE=memory`; if needed, add
   `H3_DIT_RESIDENT_LAYERS=4`. Do not enable arbitrary quantization as a first
   response.

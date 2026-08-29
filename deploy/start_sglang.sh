@@ -93,6 +93,18 @@ sglang_bin=${H3_SGLANG_BIN:-"${repo_dir}/.venv/bin/sglang"}
   exit 1
 }
 
+# apache-tvm-ffi 0.1.11 can select HIP merely because /opt/rocm exists on a
+# shared node. MiniMax H3 is running on an NVIDIA GPU here, so its JIT kernels
+# must be compiled with CUDA rather than ROCm's hipcc.
+export TVM_FFI_GPU_BACKEND=cuda
+if [[ "${TVM_FFI_GPU_BACKEND}" == "cuda" ]]; then
+  cuda_home=${CUDA_HOME:-${CUDA_PATH:-}}
+  if ! command -v nvcc >/dev/null 2>&1 && [[ ! -x "${cuda_home}/bin/nvcc" ]]; then
+    echo "CUDA compiler (nvcc) is required for SGLang's H3 JIT kernels. Load your CUDA module, then retry." >&2
+    exit 1
+  fi
+fi
+
 exec "${sglang_bin}" serve \
   --model-path "${model_path}" \
   --model-variant "${variant}" \

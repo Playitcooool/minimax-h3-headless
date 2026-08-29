@@ -36,6 +36,13 @@ def _fake_smi(tmp_path: Path, output: str = "", exit_code: int = 0) -> Path:
     return fake_bin
 
 
+def _fake_nvcc(tmp_path: Path) -> Path:
+    fake_bin = tmp_path / "cuda-bin"
+    fake_bin.mkdir(exist_ok=True)
+    _executable(fake_bin / "nvcc", "#!/usr/bin/env bash\nexit 0\n")
+    return fake_bin
+
+
 def _run_detect(
     tmp_path: Path,
     names: list[str] | None,
@@ -194,6 +201,7 @@ def _contains_sequence(items: list[str], sequence: list[str]) -> bool:
 
 def test_start_sglang_defaults_to_auto_h100x1_without_gpu(tmp_path: Path) -> None:
     fake_bin = _fake_smi(tmp_path, "partial output\n", exit_code=1)
+    _executable(fake_bin / "nvcc", "#!/usr/bin/env bash\nexit 0\n")
     fake_sglang = _executable(
         tmp_path / "sglang",
         "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n",
@@ -225,6 +233,7 @@ def test_start_sglang_defaults_to_auto_h100x1_without_gpu(tmp_path: Path) -> Non
 
 
 def test_start_sglang_single_gpu_allows_an_explicit_resident_layer_budget(tmp_path: Path) -> None:
+    fake_bin = _fake_nvcc(tmp_path)
     fake_sglang = _executable(
         tmp_path / "sglang",
         "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n",
@@ -234,6 +243,7 @@ def test_start_sglang_single_gpu_allows_an_explicit_resident_layer_budget(tmp_pa
         H3_SGLANG_BIN=str(fake_sglang),
         H3_PROFILE="h100x1",
         H3_DIT_RESIDENT_LAYERS="4",
+        PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
     )
     result = subprocess.run(
         [str(START_SGLANG)], env=env, text=True, capture_output=True, check=False
@@ -242,7 +252,39 @@ def test_start_sglang_single_gpu_allows_an_explicit_resident_layer_budget(tmp_pa
     assert _contains_sequence(_arg_lines(result.stdout), ["--dit-layerwise-resident-layers", "4"])
 
 
+def test_start_sglang_forces_cuda_jit_backend_on_nvidia_profiles(tmp_path: Path) -> None:
+    fake_bin = _fake_nvcc(tmp_path)
+    fake_sglang = _executable(
+        tmp_path / "sglang",
+        "#!/usr/bin/env bash\nprintf '%s\\n' \"$TVM_FFI_GPU_BACKEND\"\n",
+    )
+    env = os.environ.copy()
+    env.update(
+        H3_SGLANG_BIN=str(fake_sglang),
+        H3_PROFILE="h100x1",
+        TVM_FFI_GPU_BACKEND="hip",
+        PATH=f"{fake_bin}{os.pathsep}{env['PATH']}",
+    )
+    result = subprocess.run(
+        [str(START_SGLANG)], env=env, text=True, capture_output=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "cuda"
+
+
+def test_start_sglang_reports_when_cuda_compiler_is_missing(tmp_path: Path) -> None:
+    fake_sglang = _executable(tmp_path / "sglang", "#!/usr/bin/env bash\nexit 99\n")
+    env = os.environ.copy()
+    env.update(H3_SGLANG_BIN=str(fake_sglang), H3_PROFILE="h100x1", PATH="/usr/bin:/bin")
+    result = subprocess.run(
+        [str(START_SGLANG)], env=env, text=True, capture_output=True, check=False
+    )
+    assert result.returncode == 1
+    assert "CUDA compiler (nvcc) is required" in result.stderr
+
+
 def test_start_sglang_single_h100_memory_mode_offloads_vae(tmp_path: Path) -> None:
+    fake_bin = _fake_nvcc(tmp_path)
     fake_sglang = _executable(
         tmp_path / "sglang",
         "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n",
@@ -252,6 +294,7 @@ def test_start_sglang_single_h100_memory_mode_offloads_vae(tmp_path: Path) -> No
         H3_SGLANG_BIN=str(fake_sglang),
         H3_PROFILE="h100x1",
         H3_H100_MODE="memory",
+        PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
     )
     env.pop("H3_DIT_RESIDENT_LAYERS", None)
     result = subprocess.run(
@@ -297,6 +340,7 @@ def test_start_sglang_rejects_invalid_single_gpu_resident_layer_budget(tmp_path:
 
 def test_start_sglang_auto_expands_four_h100_profile(tmp_path: Path) -> None:
     fake_bin = _fake_smi(tmp_path, "NVIDIA H100 80GB HBM3\n" * 4)
+    _executable(fake_bin / "nvcc", "#!/usr/bin/env bash\nexit 0\n")
     fake_sglang = _executable(
         tmp_path / "sglang",
         "#!/usr/bin/env bash\nprintf '<%s>\\n' \"$@\"\n",
